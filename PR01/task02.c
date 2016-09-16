@@ -14,6 +14,8 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <malloc.h>
+#include <errno.h>
+#include <string.h>
 
 #define NUMFILES	1
 #define FILESIZE	1 * 1024 *1024  // 1MB
@@ -123,9 +125,31 @@ void file_write_sequential(){
 
 
 void file_read_sequential(){
+	int i, fd, bytes_read;
+	char filename[128];
+	char buf;
 
-	/* Your Implementation!! */
+	for (i = 0; i < NUMFILES; i++) {
+		snprintf(filename, 128, "%s/file-%d", dirname, i);
+		fd = open(filename, O_RDONLY);
+		if (fd == -1) {
+			perror("open");
+			exit(1);
+		}
+		printf ("File Opened Sequential Read .. \n");
 
+		while (1) {
+			/* Read byte-by-byte sequentially */
+			bytes_read = read(fd, (void *)&buf, sizeof(buf));
+
+			/* end of file, all done so we can break from loop */
+			if (bytes_read == 0)
+				break;
+			/* error, while loop will retry to read() */
+			else if (bytes_read == -1)
+				fprintf(stderr, "ERROR: read() failed with error: [%s]", strerror(errno));
+		}
+	}
 	return;
 }
 
