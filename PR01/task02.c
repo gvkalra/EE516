@@ -17,22 +17,34 @@
 #include <errno.h>
 #include <string.h>
 
-#define NUMFILES	1
-#define FILESIZE	1 * 1024 *1024  // 1MB
+#define err(fmt,args...) \
+	do { \
+		fprintf(stderr, "<%s:%d> " fmt "\n", __func__, __LINE__, ##args); \
+	} while (0)
+
+#define info(fmt,args...) \
+	do { \
+		fprintf(stdout, fmt "\n", ##args); \
+	} while (0)
+
+#define NUMFILES 1
+#define FILESIZE (1 * 1024 * 1024) /* 1MB */
 
 char *dirname;
 int req_size;
 ssize_t act_size;
 
-
-void usage(char *prog)
+static void
+usage(char *prog)
 {
-	fprintf(stderr, "Usage: %s <working directory> <request size>\n", prog);
+	err("Usage: %s <working directory> <request size>",
+		prog);
 	exit(1);
 }
 
-
-long gettimeusec(){
+static long
+gettimeusec(void)
+{
 	struct timeval time;
 	long usec; 
 
@@ -42,32 +54,94 @@ long gettimeusec(){
 	return usec;
 }
 
+/* Generates a unique (non-repeating) random number in O(1)
+ *
+ * pool_size is how many unique numbers are required to be generated.
+ *
+ * e.g.
+ * The function get_next_rand_number(512) will initialize a pool of 512 random numbers (0 to 511)
+ * and return a random number from it.
+ * Subsequent calls to get_next_rand_number(-1) will return a unique random number from the pool
+ * A call to get_next_rand_number(-1) will return -1 when the pool is exhausted
+ *
+ * Ref: http://stackoverflow.com/questions/196017/unique-non-repeating-random-numbers-in-o1
+*/
+static int
+get_next_rand_number(int pool_size)
+{
+	int i, num, temp;
+	static int num_left = 0;
+	static int *num_pool = NULL;
 
+	/* Initialize a new pool */
+	if (pool_size >= 0) {
+		/* A pool already exists. Free it first */
+		if (num_pool != NULL) {
+			free(num_pool);
+			num_pool = NULL;
+		}
 
-void file_create(){
-	int i = 0;
-	int fd = 0;
+		/* Allocate memory */
+		num_pool = malloc(sizeof(int) * pool_size);
+		if (num_pool == NULL) {
+			err("malloc() failed: [%s]", strerror(errno));
+			exit(1);
+		}
+
+		/* Initial values */
+		for (i = 0; i < pool_size; i++)
+			num_pool[i] = i;
+		num_left = pool_size;
+	}
+
+	/* pool exhausted, return -1 */
+	if (num_left == 0)
+		return -1;
+
+	/* select a random number between 0 and num_left */
+	num = rand() % num_left;
+
+	/* replace num_pool[num] with num_pool[num_left - 1] */
+	temp = num_pool[num];
+	num_pool[num] = num_pool[num_left - 1];
+
+	/* decrement items left in pool */
+	num_left--;
+
+	/* if pool is exhausted, free memory */
+	if (num_left == 0) {
+		free(num_pool);
+		num_pool = NULL;
+	}
+
+	/* return previous num_pool[num] (saved in temp) */
+	return temp;
+}
+
+static void
+file_create(void)
+{
+	int i, fd;
 	char filename[128];
-
 
 	/* Create phase */
 	for (i = 0; i < NUMFILES; i++) {
-		snprintf(filename, 128, "%s/file-%d", dirname,  i);
-		fd = open(filename, O_WRONLY | O_CREAT | O_EXCL , S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+		snprintf(filename, 128, "%s/file-%d", dirname, i);
+		fd = open(filename, O_WRONLY | O_CREAT | O_EXCL,
+			S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 		if (fd == -1) {
-			perror("open");
+			err("open() failed: [%s]", strerror(errno));
 			exit(1);
 		}
 		close(fd);
 	}
-	printf ("File Created .. \n");
-	return;
+	info("File Created ..");
 }
 
-
-void file_delete(){
-	int i,  ret;
-
+static void
+file_delete(void)
+{
+	int i, ret;
 	char filename[128];
 
 	/* Unlink phase */
@@ -75,109 +149,233 @@ void file_delete(){
 		snprintf(filename, 128, "%s/file-%d", dirname, i);
 		ret = unlink(filename);
 		if (ret == -1) {
-			perror("unlink");
+			err("unlink() failed: [%s]", strerror(errno));
 			exit(1);
 		}
 	}
-	return;
 }
 
+static void
+file_write_sequential(void)
+{
+	int i, j, fd;
+	char filename[128], *buf;
+	ssize_t bytes_written;
 
-void file_write_sequential(){
-	int i, j, fd, ret;
-	char filename[128];
-	ssize_t act_size;
-	
-
-	char *buf  = (char *) (memalign((size_t)req_size,(size_t) req_size));
-
-	//buf = (char *)malloc(req_size);
-	if (!buf) {
-		fprintf(stderr, "ERROR: Failed to allocate buffer");
+	buf = memalign((size_t)req_size, (size_t)req_size);
+	if (buf == NULL) {
+		err("Failed to allocate buffer");
 		exit(1);
 	}
 
-	
 	for (i = 0; i < NUMFILES; i++) {
-		snprintf(filename, 128, "%s/file-%d", dirname,  i);
-		fd = open(filename, O_DIRECT | O_WRONLY |  O_EXCL, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-		//fd = open(filename,  O_WRONLY |  O_EXCL, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-
+		snprintf(filename, 128, "%s/file-%d", dirname, i);
+		fd = open(filename, O_DIRECT | O_WRONLY |  O_EXCL,
+			S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 		if (fd == -1) {
-			perror("open");
+			err("open() failed: [%s]", strerror(errno));
+			free(buf);
 			exit(1);
 		}
-		printf ("File Opened Sequential Write .. \n");
+		info("File Opened Sequential Write ..");
 
-		for( j = 0; j < FILESIZE; j += req_size){
-			act_size = write(fd, buf, req_size);
-			if (act_size == -1) {
-				perror("write");
+		/* It is possible for write() to return a value > 0 and < req_size,
+		 * e.g. if there is insufficient space on the underlying physical medium
+		 * refer: http://linux.die.net/man/2/write
+		 *
+		 * However, no effort has been made to handle that case since this template
+		 * is provided as-is in assignment. So, we assume every call to write() will
+		 * either flush req_size bytes or fail.
+		 * Also, it is assumed that req_size, buf & current file offset are suitably aligned.
+		 * e.g. if req_size is passed as 1023, write() will fail with EINVAL
+		*/
+		for (j = 0; j < FILESIZE; j += req_size) {
+			bytes_written = write(fd, buf, req_size);
+			if (bytes_written == -1) {
+				err("write() failed: [%s]", strerror(errno));
+				free(buf);
+				close(fd);
 				exit(1);
 			}
 		}
 
 		close(fd);
 	}
-	return;
+	free(buf);
 }
 
+static void
+file_read_sequential(void)
+{
+	int i, fd;
+	char filename[128], *buf;
+	ssize_t bytes_read;
 
+	if ((FILESIZE % req_size) != 0) {
+		err("FILESIZE(%d) and req_size(%d) are not aligned",
+			FILESIZE, req_size);
+		exit(1);
+	}
 
-void file_read_sequential(){
-	int i, fd, bytes_read;
-	char filename[128];
-	char buf;
+	buf = memalign((size_t)req_size, (size_t)req_size);
+	if (buf == NULL) {
+		err("Failed to allocate buffer");
+		exit(1);
+	}
 
 	for (i = 0; i < NUMFILES; i++) {
 		snprintf(filename, 128, "%s/file-%d", dirname, i);
 		fd = open(filename, O_RDONLY);
 		if (fd == -1) {
-			perror("open");
+			err("open() failed: [%s]", strerror(errno));
+			free(buf);
 			exit(1);
 		}
-		printf ("File Opened Sequential Read .. \n");
+		info("File Opened Sequential Read ..");
 
-		while (1) {
-			/* Read byte-by-byte sequentially */
-			bytes_read = read(fd, (void *)&buf, sizeof(buf));
+		do {
+			/* read chunks of req_size bytes */
+			bytes_read = read(fd, buf, req_size);
+			if (bytes_read == -1) {
+				err("read() failed: [%s]", strerror(errno));
+				free(buf);
+				close(fd);
+				exit(1);
+			}
+		/* read until EOF is reached */
+		} while (bytes_read != 0);
 
-			/* end of file, all done so we can break from loop */
-			if (bytes_read == 0)
-				break;
-			/* error, while loop will retry to read() */
-			else if (bytes_read == -1)
-				fprintf(stderr, "ERROR: read() failed with error: [%s]", strerror(errno));
-		}
+		close(fd);
 	}
-	return;
+	free(buf);
 }
 
+static void
+file_write_random(void)
+{
+	int i, offset, fd;
+	char filename[128], *buf;
+	ssize_t bytes_written;
 
-void file_write_random(){
+	if ((FILESIZE % req_size) != 0) {
+		err("FILESIZE(%d) and req_size(%d) are not aligned",
+			FILESIZE, req_size);
+		exit(1);
+	}
 
-	/* Your Implementation!! */
+	buf = memalign((size_t)req_size, (size_t)req_size);
+	if (buf == NULL) {
+		err("Failed to allocate buffer");
+		exit(1);
+	}
 
-	return;
+	for (i = 0; i < NUMFILES; i++) {
+		snprintf(filename, 128, "%s/file-%d", dirname, i);
+		fd = open(filename, O_DIRECT | O_WRONLY | O_EXCL,
+			S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+		if (fd == -1) {
+			err("open() failed: [%s]", strerror(errno));
+			free(buf);
+			exit(1);
+		}
+		info("File Opened Random Write ..");
+
+		/* randomly get an offset for lseek() */
+		offset = get_next_rand_number((FILESIZE / req_size));
+		while (offset >= 0) {
+			/* seek from beginning of file */
+			lseek(fd, (offset * req_size), SEEK_SET);
+
+			/* at every random offset, flush req_size bytes of data
+			*
+			* As noted in file_write_sequential(), it is assumed that write()
+			* will either flush whole req_size bytes of data or none at all.
+			* The case where physical medium is full & there is not enough space
+			* is not handled
+			*/
+			bytes_written = write(fd, buf, req_size);
+			if (bytes_written == -1) {
+				err("write() failed: [%s]", strerror(errno));
+				free(buf);
+				close(fd);
+				exit(1);
+			}
+
+			/* generate another random offset */
+			offset = get_next_rand_number(-1);
+		}
+		close(fd);
+	}
+	free(buf);
 }
 
+static void
+file_read_random(void)
+{
+	int i, fd, offset;
+	char filename[128], *buf;
+	ssize_t total_bytes, bytes_read;
 
-void file_read_random(){
+	if ((FILESIZE % req_size) != 0) {
+		err("FILESIZE(%d) and req_size(%d) are not aligned",
+			FILESIZE, req_size);
+		exit(1);
+	}
 
+	buf = memalign((size_t)req_size, (size_t)req_size);
+	if (buf == NULL) {
+		err("Failed to allocate buffer");
+		exit(1);
+	}
 
-	/* Your Implementation!! */
+	for (i = 0; i < NUMFILES; i++) {
+		snprintf(filename, 128, "%s/file-%d", dirname, i);
+		fd = open(filename, O_RDONLY);
+		if (fd == -1) {
+			err("open() failed: [%s]", strerror(errno));
+			free(buf);
+			exit(1);
+		}
+		info("File Opened Random Read ..");
 
+		/* randomly get an offset for lseek() */
+		offset = get_next_rand_number((FILESIZE / req_size));
+		while (offset >= 0) {
+			/* seek from beginning of file */
+			lseek(fd, (offset * req_size), SEEK_SET);
 
+			total_bytes = 0;
+			do {
+				bytes_read = read(fd, buf, req_size);
+				if (bytes_read == -1) {
+					err("read() failed: [%s]", strerror(errno));
+					free(buf);
+					close(fd);
+					exit(1);
+				}
 
-	return;
+				/* at every random offset, read req_size bytes of data
+				*
+				* In case read() is not able to read whole req_size bytes,
+				* we retry to read until total_bytes for the current random offset
+				* reach req_size. This is best effort basis to sequentially
+				* read the whole file.
+				*/
+				total_bytes += bytes_read;
+			} while (total_bytes != req_size);
+
+			/* generate another random offset */
+			offset = get_next_rand_number(-1);
+		}
+		close(fd);
+	}
+	free(buf);
 }
-
-
 
 int main(int argc, char **argv)
 {
-	long creat_time_sequential, write_time_sequential, read_time_sequential, delete_time_sequential, end_time_sequential;
-	long creat_time_random, write_time_random, read_time_random, delete_time_random, end_time_random;
+	long creat_time_sequential, write_time_sequential, read_time_sequential;
+	long write_time_random, read_time_random, delete_time_random, end_time_random;
 
 	if (argc != 3) {
 		usage(argv[0]);
@@ -189,46 +387,33 @@ int main(int argc, char **argv)
 	creat_time_sequential = gettimeusec();	
 	file_create();	
 
-
 	write_time_sequential = gettimeusec();	
 	file_write_sequential();
-
 
 	read_time_sequential = gettimeusec();
 	file_read_sequential();
 
-	
-
 	// Random Access Test
-
 	srand(30);	
 
 	write_time_random = gettimeusec();
 	file_write_random();
 
-
 	read_time_random = gettimeusec();
 	file_read_random();
-
 	
 	delete_time_random = gettimeusec();
 	file_delete();
 
-	end_time_random=gettimeusec();
+	end_time_random = gettimeusec();
 
-
-
-
-	printf("==============  File System Benchmark Execution Result (Time usec)  ==============\n");
-	printf("File Create\t : \t%10ld\n",write_time_sequential-creat_time_sequential);
-	printf("Sequential Write : \t%10ld\n",read_time_sequential-write_time_sequential);
-	printf("Sequential Read\t : \t%10ld\n",write_time_random-read_time_sequential);
-	printf("Random Write\t : \t%10ld\n",read_time_random - write_time_random);
-	printf("Random Read\t : \t%10ld\n",delete_time_random-read_time_random);
-	printf("File Delete\t : \t%10ld\n",end_time_random-delete_time_random);
-	printf("Total\t\t : \t%10ld\n",end_time_random - creat_time_sequential);
-
-	printf("==================================================================================\n");
-
-
+	info("==============  File System Benchmark Execution Result (Time usec)  ==============");
+	info("File Create\t : \t%10ld", (write_time_sequential - creat_time_sequential));
+	info("Sequential Write : \t%10ld", (read_time_sequential - write_time_sequential));
+	info("Sequential Read\t : \t%10ld", (write_time_random - read_time_sequential));
+	info("Random Write\t : \t%10ld", (read_time_random - write_time_random));
+	info("Random Read\t : \t%10ld", (delete_time_random - read_time_random));
+	info("File Delete\t : \t%10ld", (end_time_random - delete_time_random));
+	info("Total\t\t : \t%10ld", (end_time_random - creat_time_sequential));
+	info("==================================================================================");
 }
