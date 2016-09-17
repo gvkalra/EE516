@@ -1,4 +1,4 @@
-obj-m := simple_device.o
+obj-m := stack_device.o
 
 KDIR := /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
