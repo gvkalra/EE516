@@ -9,3 +9,8 @@ Task 2
 
 Implement sequential read, random write, random read in the skeleton
 file system benchmark program
+
+Task 3
+============
+
+Write a Makefile for the source code of Task 2
