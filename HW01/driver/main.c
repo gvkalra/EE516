@@ -5,8 +5,16 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
+#include <linux/device.h>
 
-static struct cdev cdev_s;
+#define CHARDEV_NAME "stack_device"
+#define CHARDEV_NR_MINOR 0
+#define CHARDEV_NR_DEVICES 1
+
+static dev_t dev_first = 0;
+static struct cdev *cdev = NULL;
+static struct class *class = NULL;
+struct device *device = NULL;
 
 static int
 stack_dev_open(struct inode *inode, struct file *file)
@@ -16,7 +24,7 @@ stack_dev_open(struct inode *inode, struct file *file)
 }
 
 static ssize_t
-stack_dev_read(struct file *file, char *buffer, size_t length, loff_t *offset)
+stack_dev_read(struct file *file, char __user *buffer, size_t length, loff_t *offset)
 {
 	int item, ret;
 
@@ -33,7 +41,7 @@ stack_dev_read(struct file *file, char *buffer, size_t length, loff_t *offset)
 }
 
 static ssize_t
-stack_dev_write(struct file *file, const char *buffer, size_t length, loff_t *offset)
+stack_dev_write(struct file *file, const char __user *buffer, size_t length, loff_t *offset)
 {
 	int item, ret;
 
@@ -60,33 +68,93 @@ stack_dev_release(struct inode *inode, struct file *file)
 }
 
 static struct file_operations fops = {
-	.open = stack_dev_open,
-	.read = stack_dev_read,
-	.write = stack_dev_write,
-	.release = stack_dev_release,
+	.owner = THIS_MODULE,
+	.open = stack_dev_open, /* open() */
+	.read = stack_dev_read, /* read() */
+	.write = stack_dev_write, /* write() */
+	.release = stack_dev_release, /* close() */
 };
+
+static void
+_stack_dev_exit(void)
+{
+	dbg("");
+
+	if (device != NULL) {
+		device_destroy(class, dev_first);
+		device = NULL;
+	}
+
+	if (class != NULL) {
+		class_destroy(class);
+		class = NULL;
+	}
+
+	if (cdev != NULL) {
+		cdev_del(cdev);
+		cdev = NULL;
+	}
+
+	if (dev_first != 0) {
+		unregister_chrdev_region(dev_first, CHARDEV_NR_DEVICES);
+		dev_first = 0;
+	}
+
+	info("[STACK_DEVICE] released");
+}
 
 static int __init
 stack_dev_init(void)
 {
-	dev_t dev = MKDEV(250, 0);
+	int ret;
 
 	dbg("");
 
-	register_chrdev(250, "Stack Driver", &fops);
-	cdev_init(&cdev_s, &fops);
-	cdev_add(&cdev_s, dev, 128);
+	ret = alloc_chrdev_region(&dev_first, CHARDEV_NR_MINOR, CHARDEV_NR_DEVICES, CHARDEV_NAME);
+	if (ret < 0) {
+		err("Failed allocating device number");
+		goto error;
+	}
+
+	cdev = cdev_alloc();
+	if (cdev == NULL) {
+		err("Failed allocating character device");
+		goto error;
+	}
+	cdev->owner = THIS_MODULE;
+	cdev->ops = &fops;
+
+	ret = cdev_add(cdev, dev_first, CHARDEV_NR_DEVICES);
+	if (ret < 0) {
+		err("Failed adding character device to the system");
+		goto error;
+	}
+
+	info("[STACK_DEVICE] allocated Major(%d) and Minor(%d)", MAJOR(dev_first), MINOR(dev_first));
+
+	/* Create /dev/stack_device node */
+	class = class_create(THIS_MODULE, CHARDEV_NAME);
+	if (class == NULL) {
+		err("Failed creating device class");
+		goto error;
+	}
+	device = device_create(class, NULL, dev_first, NULL, "%s", CHARDEV_NAME);
+	if (device == NULL) {
+		err("Failed creating /dev node");
+		goto error;
+	}
 
 	return 0;
+
+error:
+	_stack_dev_exit();
+	return -1;
 }
 
 static void __exit
 stack_dev_exit(void)
 {
-	dbg("");
-
-	cdev_del(&cdev_s);
-	unregister_chrdev_region(MKDEV(250,0), 128);
+	_stack_dev_exit();
 }
 
 module_init(stack_dev_init);
