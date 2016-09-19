@@ -1,6 +1,6 @@
 #include "stack.h"
+#include "utils.h"
 
-#include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
@@ -11,7 +11,7 @@ static struct cdev cdev_s;
 static int
 stack_dev_open(struct inode *inode, struct file *file)
 {
-	printk(KERN_INFO "stack_dev_open()\n");
+	dbg("");
 	return 0;
 }
 
@@ -20,7 +20,7 @@ stack_dev_read(struct file *file, char *buffer, size_t length, loff_t *offset)
 {
 	int item, ret;
 
-	printk(KERN_INFO "stack_dev_read()\n");
+	dbg("");
 
 	ret = st_pop(&item);
 	if (ret < 0)
@@ -37,7 +37,7 @@ stack_dev_write(struct file *file, const char *buffer, size_t length, loff_t *of
 {
 	int item, ret;
 
-	printk(KERN_INFO "stack_dev_write()\n");
+	dbg("");
 
 	if (copy_from_user(&item, buffer, sizeof(item)))
 		return -EFAULT; /* Bad address */
@@ -52,7 +52,7 @@ stack_dev_write(struct file *file, const char *buffer, size_t length, loff_t *of
 static int
 stack_dev_release(struct inode *inode, struct file *file)
 {
-	printk(KERN_INFO "stack_dev_release()\n");
+	dbg("");
 
 	st_clean();
 
@@ -71,7 +71,7 @@ stack_dev_init(void)
 {
 	dev_t dev = MKDEV(250, 0);
 
-	printk(KERN_INFO "stack_dev_init()\n");
+	dbg("");
 
 	register_chrdev(250, "Stack Driver", &fops);
 	cdev_init(&cdev_s, &fops);
@@ -83,7 +83,7 @@ stack_dev_init(void)
 static void __exit
 stack_dev_exit(void)
 {
-	printk(KERN_INFO "stack_dev_exit()\n");
+	dbg("");
 
 	cdev_del(&cdev_s);
 	unregister_chrdev_region(MKDEV(250,0), 128);

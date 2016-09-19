@@ -1,10 +1,10 @@
 #pragma once
 
-/* True if no more items can be popped and there is no top item
+/* True (1) if no more items can be popped and there is no top item
 */
 int st_is_empty(void);
 
-/* True if no more items can be pushed
+/* True (1) if no more items can be pushed
 */
 int st_is_full(void);
 

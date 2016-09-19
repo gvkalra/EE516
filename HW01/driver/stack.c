@@ -1,5 +1,5 @@
 #include "stack.h"
-#include <linux/kernel.h>
+#include "utils.h"
 
 #define STACK_SIZE 256
 
@@ -7,12 +7,12 @@ struct {
 	int stack[STACK_SIZE];
 	int top;
 } st = {
-	.top = -1,
+	.top = -1, /* top is set to -1 to indicate empty stack */
 };
 
 int st_is_empty(void)
 {
-	printk(KERN_INFO "st_is_empty()\n");
+	dbg("");
 
 	if (st.top == -1)
 		return 1;
@@ -21,7 +21,7 @@ int st_is_empty(void)
 
 int st_is_full(void)
 {
-	printk(KERN_INFO "st_is_full()\n");
+	dbg("");
 
 	if (st.top >= STACK_SIZE - 1)
 		return 1;
@@ -30,12 +30,13 @@ int st_is_full(void)
 
 int st_push(int item)
 {
-	/* return -1 if stack is already full */
+	/* stack is full, we can't add more items */
 	if (st_is_full())
 		return -1;
 
-	printk(KERN_INFO "st_push()\n");
+	dbg("");
 
+	/* add item */
 	st.top++;
 	st.stack[st.top] = item;
 	return 0;
@@ -47,8 +48,9 @@ int st_pop(int *item)
 	if (item == NULL || st_is_empty())
 		return -1;
 
-	printk(KERN_INFO "st_pop()\n");
+	dbg("");
 
+	/* remove item */
 	*item = st.stack[st.top];
 	st.top--;
 	return 0;
@@ -56,7 +58,10 @@ int st_pop(int *item)
 
 void st_clean(void)
 {
-	printk(KERN_INFO "st_clean()\n");
+	dbg("");
 
+	/* setting top to -1 means stack is cleaned up
+	 * there is no way to access st
+	*/
 	st.top = -1;
 }
