@@ -1,5 +1,6 @@
-obj-m := stack_device.o
-stack_device-objs := stack.o
+MODNAME := stack_device
+obj-m := ${MODNAME}.o
+${MODNAME}-objs := main.o stack.o
 
 KDIR := /lib/modules/$(shell uname -r)/build
 
