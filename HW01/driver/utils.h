@@ -2,7 +2,7 @@
 
 #include <linux/kernel.h>
 
-#define DEBUG_ENABLE /* comment this to disable debugging logs */
+#define DEBUG_ENABLE /* uncomment to enable debugging logs */
 
 #ifdef DEBUG_ENABLE
 	#define dbg(fmt,args...) \
