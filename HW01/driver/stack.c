@@ -1,6 +1,8 @@
 #include "stack.h"
 #include "utils.h"
 
+#include <linux/module.h>
+
 #define STACK_SIZE 256
 
 struct {
@@ -30,10 +32,6 @@ int st_is_full(void)
 
 int st_push(int item)
 {
-	/* stack is full, we can't add more items */
-	if (st_is_full())
-		return -1;
-
 	dbg("");
 
 	/* add item */
@@ -44,9 +42,9 @@ int st_push(int item)
 
 int st_pop(int *item)
 {
-	/* invalid arguments or stack is empty */
-	if (item == NULL || st_is_empty())
-		return -1;
+	/* invalid arguments */
+	if (item == NULL)
+		return -EINVAL;
 
 	dbg("");
 

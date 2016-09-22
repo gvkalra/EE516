@@ -37,15 +37,21 @@ stack_dev_read(struct file *file, char __user *buffer, size_t length, loff_t *of
 
 	dbg("");
 
+	/* EOF, return 0 */
+	if (st_is_empty())
+		return 0;
+
+	/* pop */
 	ret = st_pop(&item);
 	if (ret < 0)
-		return -ESPIPE; /* Illegal seek */
+		return ret;
 
 	/* copy data into user space */
 	if (copy_to_user(buffer, &item, sizeof(item)))
 		return -EFAULT; /* Bad address */
 
-	return 0;
+	/* popped & copied to user space, return bytes */
+	return sizeof(item);
 }
 
 static ssize_t
@@ -55,19 +61,32 @@ stack_dev_write(struct file *file, const char __user *buffer, size_t length, lof
 
 	dbg("");
 
+	/* No more space */
+	if (st_is_full())
+		return -ENOMEM;
+
 	/* copy data from user space */
 	if (copy_from_user(&item, buffer, sizeof(item)))
 		return -EFAULT; /* Bad address */
-	
+
+	/* push */
 	ret = st_push(item);
 	if (ret < 0)
-		return -ENOMEM; /* Out of memory */
+		return ret;
 
-	return 0;
+	/* pushed & copied from user space, return bytes */
+	return sizeof(item);
 }
 
 static int
 stack_dev_release(struct inode *inode, struct file *file)
+{
+	dbg("");
+	return 0;
+}
+
+static long
+stack_dev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	dbg("");
 
@@ -82,6 +101,12 @@ static struct file_operations fops = {
 	.read = stack_dev_read, /* read() */
 	.write = stack_dev_write, /* write() */
 	.release = stack_dev_release, /* close() */
+/*
+ * References:
+ * [1] https://github.com/torvalds/linux/blob/master/fs/ext4/file.c#L698
+ * [2] https://github.com/torvalds/linux/blob/master/fs/ext4/ioctl.c#L436
+*/
+	.unlocked_ioctl = stack_dev_ioctl, /* unlocked_ioctl() */
 };
 
 static void
