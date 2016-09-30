@@ -11,4 +11,5 @@ manager_add_entry(pid_t pid, const char *name,
 void
 manager_show_monitor(int sort_order);
 
+void manager_init(void);
 void manager_release(void);

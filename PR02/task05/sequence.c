@@ -1,6 +1,7 @@
 #include "sequence.h"
 #include "utils.h"
 #include "manager.h"
+#include "sorting.h"
 
 #include <linux/sched.h>
 #include <linux/task_io_accounting_ops.h>
@@ -12,11 +13,16 @@ pl_seq_start(struct seq_file *m, loff_t *pos)
 
 	/* new sequence, return init_task */
 	if (*pos == 0) {
+		manager_init();
 		return &init_task;
 	}
 	/* sequence end, terminate */
 	else {
 		*pos = 0;
+
+		manager_show_monitor(get_current_sort_order());
+		manager_release();
+
 		return NULL;
 	}
 }
