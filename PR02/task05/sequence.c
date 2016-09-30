@@ -1,5 +1,6 @@
 #include "sequence.h"
 #include "utils.h"
+#include "manager.h"
 
 #include <linux/sched.h>
 #include <linux/task_io_accounting_ops.h>
@@ -49,9 +50,18 @@ pl_seq_show(struct seq_file *m, void *v)
 {
 	struct task_struct *tsk = v, *t;
 	char buf[TASK_COMM_LEN];
+	unsigned long virt = 0;
+	long rss = 0;
 	struct task_io_accounting acct = tsk->ioac; /* initialize accounting data */
 
 	dbg("");
+
+	/* virt & rss */
+	if (tsk->active_mm != NULL) {
+		virt = tsk->active_mm->total_vm;
+		rss += atomic_long_read(&tsk->active_mm->rss_stat.count[MM_FILEPAGES]);
+		rss += atomic_long_read(&tsk->active_mm->rss_stat.count[MM_ANONPAGES]);
+	}
 
 	/* account each thread */
 	t = tsk;
@@ -59,24 +69,24 @@ pl_seq_show(struct seq_file *m, void *v)
 	while_each_thread(tsk, t)
 		task_io_accounting_add(&acct, &t->ioac);
 
+	/* send to manager */
+	manager_add_entry(task_pid_nr(tsk), get_task_comm(buf, tsk),
+		virt, rss,
+		acct.read_bytes, acct.write_bytes,
+		(acct.read_bytes + acct.write_bytes));
+
 	/* print information */
-	seq_printf(m, "%s [PID: %u]\n"
-		"\trchar: %llu\n"
-		"\twchar: %llu\n"
-		"\tsyscr: %llu\n"
-		"\tsyscw: %llu\n"
+	dbg("%s [PID: %u]\n"
+		"\tvirt: %lu\n"
+		"\trss: %lu\n"
 		"\tread_bytes: %llu\n"
-		"\twrite_bytes: %llu\n"
-		"\tcancelled_write_bytes: %llu\n\n",
+		"\twrite_bytes: %llu\n",
 		get_task_comm(buf, tsk),
 		task_pid_nr(tsk),
-		(unsigned long long)acct.rchar,
-		(unsigned long long)acct.wchar,
-		(unsigned long long)acct.syscr,
-		(unsigned long long)acct.syscw,
+		virt,
+		rss,
 		(unsigned long long)acct.read_bytes,
-		(unsigned long long)acct.write_bytes,
-		(unsigned long long)acct.cancelled_write_bytes);
+		(unsigned long long)acct.write_bytes);
 
 	/* return success */
 	return 0;
