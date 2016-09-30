@@ -2,8 +2,11 @@
 
 #include <linux/sched.h>
 #include <linux/list.h>
+#include <linux/list_sort.h>
 
 struct manager_entry {
+	struct list_head entries;
+
 	pid_t pid;
 	char name[TASK_COMM_LEN];
 	unsigned long virt;
@@ -11,8 +14,6 @@ struct manager_entry {
 	unsigned long long disk_read;
 	unsigned long long disk_write;
 	unsigned long long total_io;
-
-	struct list_head entries;
 };
 
 void
