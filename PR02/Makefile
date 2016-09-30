@@ -12,7 +12,6 @@ BUILD = $(MODULES:%=%.ko)
 all:: $(BUILD)
 	
 clean:
-	rm -f $(BUILD) *.o *.ko *.mod.c *.mod.o *~ .*.cmdModule.symvers
-	rm -rf .tmp_versions
+	$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE) ARCH=$(ARCH) -C $(KERNEL_SOURCE) SUBDIRS=$(CURDIR) M=$(CURDIR) clean
 $(MODULES:%=%.ko):*c
 	$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE) ARCH=$(ARCH) -C $(KERNEL_SOURCE) SUBDIRS=$(CURDIR) M=$(CURDIR) modules
