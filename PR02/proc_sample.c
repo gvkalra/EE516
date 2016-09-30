@@ -1,94 +1,141 @@
-#include <linux/uaccess.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/errno.h>
-#include <linux/mm.h>
-#include <linux/kthread.h>
-#include <linux/sched.h>
-#include <linux/freezer.h>
-#include <linux/proc_fs.h>
-#include <linux/slab.h>
-#include <linux/delay.h>
 #include <linux/seq_file.h>
+#include <linux/sched.h>
+#include <linux/proc_fs.h>
 
-#define FILE_NAME "proc_sample"
-#define BUF_SIZE 512
+#include "utils.h"
 
-char mybuf[BUF_SIZE];
-
-
-static int procmon_proc_show(struct seq_file *m, void *v)
-{
-	seq_printf(m, "======= Contents ====== \n");
-	return 0;
-}
-
-
-
-static int procmon_proc_open(struct inode *inode, struct file *file)
-{
-	printk(KERN_INFO "proc called open\n");
-	return single_open(file, procmon_proc_show, NULL);
-}
-
-
-
-static ssize_t procmon_proc_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
-{
-
-	memset(mybuf, 0, sizeof(mybuf));
-
-	if (count > BUF_SIZE) {
-		count = BUF_SIZE;
-	}
-
-	if (copy_from_user(mybuf, buf, count)) {
-		return -EFAULT;
-	}
-
-	printk(KERN_INFO "proc write : %s\n", mybuf); 
-	return (ssize_t)count;
-}
-
-
-
-
-struct file_operations fops = {
-	.owner = THIS_MODULE,
-	.open = procmon_proc_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = procmon_proc_write,
-	.release = single_release,
+/*
+struct task_struct {
+	...
+	pid_t pid;
+	...
+	struct list_head tasks;
+	...
+	char comm[TASK_COMM_LEN];
 };
 
+struct list_head {
+	 struct list_head *next, *prev;
+};
+*/
 
-static int __init init_procmon (void)
+static void *
+pl_seq_start(struct seq_file *m, loff_t *pos)
 {
-	
-	struct proc_dir_entry *procmon_proc;
-
-
-	procmon_proc = proc_create(FILE_NAME, 644, NULL, &fops);
-	if (!procmon_proc) {
-		printk(KERN_ERR "==Cannot create procmon proc entry \n");
-		return -1;
+	/* new sequence */
+	if (*pos == 0) {
+		return &init_task;
 	}
-	printk(KERN_INFO "== init procmon\n");
+	/* sequence end */
+	else {
+		*pos = 0;
+		return NULL;
+	}
+}
+
+static void *
+pl_seq_next(struct seq_file *m, void *v, loff_t *pos)
+{
+	struct task_struct *n_tsk, *c_tsk;
+
+	c_tsk = v;
+
+	if ((n_tsk = next_task(c_tsk)) != &init_task)
+		return n_tsk;
+
+	return NULL;
+}
+
+static void
+pl_seq_stop(struct seq_file *m, void *v)
+{
+}
+
+static int
+pl_seq_show(struct seq_file *m, void *v)
+{
+	struct task_struct *tsk = v;
+	char buf[TASK_COMM_LEN];
+
+	seq_printf(m, "%s %u\n",
+		get_task_comm(buf, tsk), task_pid_nr(tsk));
+
 	return 0;
 }
 
-static void __exit exit_procmon(void)
+static struct seq_operations sops = {
+	/* sets the iterator up and returns the first element of sequence */
+	.start = pl_seq_start,
+
+	/* returns the next element of sequence */
+	.next = pl_seq_next,
+
+	/* shuts it down */
+	.stop = pl_seq_stop,
+
+	/* prints element into the buffer */
+	.show = pl_seq_show,
+};
+
+static int
+pl_open(struct inode *inode, struct file *file)
 {
-	remove_proc_entry(FILE_NAME, NULL);
-	printk(KERN_INFO "== exit procmon\n");
+	/* initialize sequential file
+	 * Ref: https://www.kernel.org/doc/htmldocs/filesystems/API-seq-open.html
+	*/
+	return seq_open(file, &sops);
 }
 
+static struct file_operations fops = {
+	.owner = THIS_MODULE,
+	.open = pl_open,
 
+	/* read method for sequential files */
+	.read = seq_read,
 
-module_init(init_procmon);
-module_exit(exit_procmon);
+	/* llseek method for sequential files */
+	.llseek = seq_lseek,
 
+	/* free the structures associated with sequential file */
+	.release = seq_release,
+};
+
+static void
+_pl_module_exit(void)
+{
+	dbg("");
+}
+
+static int __init
+pl_module_init(void)
+{
+	struct proc_dir_entry *pl;
+
+	dbg("");
+
+	pl = proc_create("proc_list", 0, NULL, &fops);
+	if (pl == NULL) {
+		err("Failed to create proc_list");
+		goto error;
+	}
+	return 0;
+
+error:
+	_pl_module_exit();
+	return -1;
+}
+
+static void __exit
+pl_module_exit(void)
+{
+	_pl_module_exit();
+}
+
+module_init(pl_module_init);
+module_exit(pl_module_exit);
+
+MODULE_AUTHOR("Gaurav Kalra");
+MODULE_DESCRIPTION("PR02 Traverse Process - tasklist");
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Dong-Jae Shin");
-MODULE_DESCRIPTION("EE516 Project2 Process Monitoring Module");
