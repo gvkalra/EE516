@@ -20,7 +20,7 @@ pl_seq_start(struct seq_file *m, loff_t *pos)
 	else {
 		*pos = 0;
 
-		manager_show_monitor(get_current_sort_order());
+		manager_show_monitor(m, get_current_sort_order());
 		manager_release();
 
 		return NULL;
