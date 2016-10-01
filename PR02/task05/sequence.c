@@ -19,10 +19,6 @@ pl_seq_start(struct seq_file *m, loff_t *pos)
 	/* sequence end, terminate */
 	else {
 		*pos = 0;
-
-		manager_show_monitor(m, get_current_sort_order());
-		manager_release();
-
 		return NULL;
 	}
 }
@@ -93,6 +89,9 @@ pl_seq_show(struct seq_file *m, void *v)
 		rss,
 		(unsigned long long)acct.read_bytes,
 		(unsigned long long)acct.write_bytes);
+
+	manager_show_monitor(m, get_current_sort_order());
+	manager_release();
 
 	/* return success */
 	return 0;
