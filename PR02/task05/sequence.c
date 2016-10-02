@@ -1,20 +1,15 @@
 #include "sequence.h"
-#include "utils.h"
 #include "manager.h"
-#include "sorting.h"
-
-#include <linux/sched.h>
-#include <linux/task_io_accounting_ops.h>
+#include "utils.h"
 
 static void *
 pl_seq_start(struct seq_file *m, loff_t *pos)
 {
 	dbg("");
 
-	/* new sequence, return init_task */
+	/* new sequence, return manager_init_entry */
 	if (*pos == 0) {
-		manager_init();
-		return &init_task;
+		return &manager_init_entry;
 	}
 	/* sequence end, terminate */
 	else {
@@ -26,17 +21,19 @@ pl_seq_start(struct seq_file *m, loff_t *pos)
 static void *
 pl_seq_next(struct seq_file *m, void *v, loff_t *pos)
 {
-	struct task_struct *n_tsk, *c_tsk;
+	struct manager_entry *n_entry, *c_entry;
 	dbg("");
 
-	/* set current task */
-	c_tsk = v;
+	/* set current entry */
+	c_entry = v;
+	/* find next entry */
+	n_entry = manager_next_entry(c_entry);
 
-	/* return next task */
-	if ((n_tsk = next_task(c_tsk)) != &init_task)
-		return n_tsk;
+	/* return next entry */
+	if (n_entry != &manager_init_entry)
+		return n_entry;
 
-	/* if next task == init_task, terminate */
+	/* if next entry == manager_init_entry, terminate */
 	return NULL;
 }
 
@@ -50,48 +47,23 @@ pl_seq_stop(struct seq_file *m, void *v)
 static int
 pl_seq_show(struct seq_file *m, void *v)
 {
-	struct task_struct *tsk = v, *t;
-	char buf[TASK_COMM_LEN];
-	unsigned long virt = 0;
-	long rss = 0;
-	struct task_io_accounting acct = tsk->ioac; /* initialize accounting data */
-
+	struct manager_entry *entry = v;
 	dbg("");
 
-	/* virt & rss */
-	if (tsk->active_mm != NULL) {
-		virt = tsk->active_mm->total_vm;
-		rss += atomic_long_read(&tsk->active_mm->rss_stat.count[MM_FILEPAGES]);
-		rss += atomic_long_read(&tsk->active_mm->rss_stat.count[MM_ANONPAGES]);
-	}
-
-	/* account each thread */
-	t = tsk;
-	task_io_accounting_add(&acct, &tsk->signal->ioac);
-	while_each_thread(tsk, t)
-		task_io_accounting_add(&acct, &t->ioac);
-
-	/* send to manager */
-	manager_add_entry(task_pid_nr(tsk), get_task_comm(buf, tsk),
-		virt, rss,
-		acct.read_bytes, acct.write_bytes,
-		(acct.read_bytes + acct.write_bytes));
-
 	/* print information */
-	dbg("%s [PID: %u]\n"
-		"\tvirt: %lu\n"
-		"\trss: %lu\n"
-		"\tread_bytes: %llu\n"
-		"\twrite_bytes: %llu\n",
-		get_task_comm(buf, tsk),
-		task_pid_nr(tsk),
-		virt,
-		rss,
-		(unsigned long long)acct.read_bytes,
-		(unsigned long long)acct.write_bytes);
-
-	manager_show_monitor(m, get_current_sort_order());
-	manager_release();
+	seq_printf(m, "%s [PID: %u]\n"
+			"\tvirt: %lu\n"
+			"\trss: %lu\n"
+			"\tread_bytes: %llu\n"
+			"\twrite_bytes: %llu\n"
+			"\ttotal_io: %llu\n",
+			entry->name,
+			entry->pid,
+			entry->virt,
+			entry->rss,
+			entry->disk_read,
+			entry->disk_write,
+			entry->total_io);
 
 	/* return success */
 	return 0;

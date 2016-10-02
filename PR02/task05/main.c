@@ -1,5 +1,6 @@
 #include "sequence.h"
 #include "sorting.h"
+#include "manager.h"
 #include "utils.h"
 
 #include <linux/module.h>
@@ -15,13 +16,33 @@ static int
 pl_open(struct inode *inode, struct file *file)
 {
 	struct seq_operations *sops;
+	int ret;
 	dbg("");
+
+	/* initialize manager
+	 * it means to parse all processes & save them in
+	 * linked list owned by procmon
+	*/
+	ret = manager_init();
+	if (ret < 0) {
+		err("Failed to initialize manager: %d", ret);
+		return ret;
+	}
 
 	/* initialize sequential file, register operations
 	 * Ref: https://www.kernel.org/doc/htmldocs/filesystems/API-seq-open.html
 	*/
 	sops = get_sequence_ops();
 	return seq_open(file, sops);
+}
+
+static int
+pl_release(struct inode *inode, struct file *file)
+{
+	dbg("");
+
+	manager_deinit();
+	return seq_release(inode, file);
 }
 
 /* file operations */
@@ -36,7 +57,7 @@ static struct file_operations fops_pl = {
 	.llseek = seq_lseek,
 
 	/* free the structures associated with sequential file */
-	.release = seq_release,
+	.release = pl_release,
 };
 
 static void

@@ -1,15 +1,24 @@
 #pragma once
 
 #include <linux/kernel.h>
+#include <linux/sched.h>
 
-void
-manager_add_entry(pid_t pid, const char *name,
-	unsigned long virt, long rss,
-	unsigned long long disk_read, unsigned long long disk_write,
-	unsigned long long total_io);
+struct manager_entry {
+	struct list_head entries;
 
-void
-manager_show_monitor(struct seq_file *m, int sort_order);
+	pid_t pid;
+	char name[TASK_COMM_LEN];
+	unsigned long virt;
+	long rss;
+	unsigned long long disk_read;
+	unsigned long long disk_write;
+	unsigned long long total_io;
+};
 
-void manager_init(void);
-void manager_release(void);
+extern struct manager_entry manager_init_entry;
+
+#define manager_next_entry(e) \
+	container_of((e)->entries.next, struct manager_entry, entries)
+
+int manager_init(void);
+void manager_deinit(void);

@@ -1,28 +1,28 @@
 #include "manager.h"
 #include "utils.h"
 
-#include <linux/sched.h>
+#include <linux/task_io_accounting_ops.h>
 #include <linux/list.h>
 #include <linux/list_sort.h>
 #include <linux/slab.h>
 #include <linux/seq_file.h>
 
-struct manager_entry {
-	struct list_head entries;
+#define INIT_MANAGER(e) \
+{											\
+	.entries = LIST_HEAD_INIT(e.entries),	\
+	.pid = 0,								\
+	.name = {'\0',},						\
+	.virt = 0,								\
+	.rss = 0,								\
+	.disk_read = 0,							\
+	.disk_write = 0,						\
+	.total_io = 0,							\
+}
 
-	pid_t pid;
-	char name[TASK_COMM_LEN];
-	unsigned long virt;
-	long rss;
-	unsigned long long disk_read;
-	unsigned long long disk_write;
-	unsigned long long total_io;
-};
-
-static LIST_HEAD(entries_list);
+struct manager_entry manager_init_entry = INIT_MANAGER(manager_init_entry);
 
 static struct manager_entry *
-_create_new_node(pid_t pid, const char *name,
+alloc_manager_node(pid_t pid, const char *name,
 	unsigned long virt, long rss,
 	unsigned long long disk_read, unsigned long long disk_write,
 	unsigned long long total_io)
@@ -45,62 +45,52 @@ _create_new_node(pid_t pid, const char *name,
 	return entry;
 }
 
-void
-manager_add_entry(pid_t pid, const char *name,
-	unsigned long virt, long rss,
-	unsigned long long disk_read, unsigned long long disk_write,
-	unsigned long long total_io)
+static void
+free_manager_node(struct manager_entry *entry)
 {
+	kfree(entry);
+}
+
+int manager_init(void)
+{
+	struct task_struct *tsk;
 	struct manager_entry *entry;
+	char name[TASK_COMM_LEN];
 
-	entry = _create_new_node(pid, name, virt, rss,
-		disk_read, disk_write, total_io);
-	if (entry == NULL) {
-		err("Unable to allocate memory: [%s]", name);
-		return;
+	dbg("");
+
+	for_each_process(tsk) {
+		dbg("name: [%s] pid: [%d]", get_task_comm(name, tsk),
+			task_pid_nr(tsk));
+
+		entry = alloc_manager_node(task_pid_nr(tsk),
+			get_task_comm(name, tsk),
+			0, 0,
+			0, 0,
+			0);
+		if (entry == NULL) {
+			info("Skipping PID: [%d]", task_pid_nr(tsk));
+			continue;
+		}
+
+		list_add(&entry->entries, &manager_init_entry.entries);
 	}
 
-	list_add(&entry->entries, &entries_list);
+	return 0;
 }
 
-void
-manager_show_monitor(struct seq_file *m, int sort_order)
+void manager_deinit(void)
 {
-	struct manager_entry *entry = NULL;
+	struct list_head *cursor, *temp;
+	struct manager_entry *entry;
+	dbg("");
 
-	list_for_each_entry(entry, &entries_list, entries) {
-		/* print information */
-		seq_printf(m, "%s [PID: %u]\n"
-			"\tvirt: %lu\n"
-			"\trss: %lu\n"
-			"\tdisk_read: %llu\n"
-			"\tdisk_write: %llu\n"
-			"\ttotal_io: %llu\n\n",
-			entry->name,
-			entry->pid,
-			entry->virt,
-			entry->rss,
-			entry->disk_read,
-			entry->disk_write,
-			entry->total_io);
+	list_for_each_safe(cursor, temp, &manager_init_entry.entries) {
+		entry = list_entry(cursor, struct manager_entry, entries);
+		dbg("name: [%s] pid: [%d]", entry->name, entry->pid);
+		list_del(cursor);
+		free_manager_node(entry);
 	}
 
-	dbg("seq_has_overflowed: [%d]", seq_has_overflowed(m));
-
-#if 0
-	struct list_head *i, *j;
-	list_for_each_safe(i, j, &entries_list.entries) {
-		entry = list_entry(i, struct manager_entry, entries);
-		list_del(i);
-		kfree(entry);
-	}
-#endif
-}
-
-void manager_init(void)
-{
-}
-
-void manager_release(void)
-{
+	dbg("Is empty? %d", list_empty(&manager_init_entry.entries));
 }
