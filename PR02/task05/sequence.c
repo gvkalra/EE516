@@ -50,15 +50,22 @@ pl_seq_show(struct seq_file *m, void *v)
 	struct manager_entry *entry = v;
 	dbg("");
 
+	/* Display header */
+	if (entry == &manager_init_entry) {
+		seq_printf(m, "PID \t ProcessName \t "
+			"VIRT(KB) \t RSS Mem(KB) \t "
+			"DiskRead(KB) \t DiskWrite(KB) \t "
+			"Total I/O(KB)\n");
+		return 0;
+	}
+
 	/* print information */
-	seq_printf(m, "%s [PID: %u]\n"
-			"\tvirt: %lu\n"
-			"\trss: %lu\n"
-			"\tread_bytes: %llu\n"
-			"\twrite_bytes: %llu\n"
-			"\ttotal_io: %llu\n",
-			entry->name,
+	seq_printf(m, "%u \t %s \t "
+			"%lu \t %lu \t "
+			"%llu \t %llu \t "
+			"%llu\n",
 			entry->pid,
+			entry->name,
 			entry->virt,
 			entry->rss,
 			entry->disk_read,
