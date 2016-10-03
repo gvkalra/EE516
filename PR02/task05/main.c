@@ -1,5 +1,5 @@
 #include "sorting.h"
-#include "manager.h"
+#include "sequence.h"
 #include "utils.h"
 
 #include <linux/module.h>
@@ -17,17 +17,17 @@ pl_open(struct inode *inode, struct file *file)
 	int ret;
 	dbg("");
 
-	/* initialize manager
+	/* initialize sequence
 	 * it means to parse all processes & save them in
 	 * linked list owned by procmon
 	*/
-	ret = manager_init();
+	ret = sequence_init();
 	if (ret < 0) {
-		err("Failed to initialize manager: %d", ret);
+		err("Failed to initialize sequence: %d", ret);
 		return ret;
 	}
 
-	return single_open(file, manager_show, NULL);
+	return single_open(file, sequence_show, NULL);
 }
 
 static int
@@ -35,7 +35,7 @@ pl_release(struct inode *inode, struct file *file)
 {
 	dbg("");
 
-	manager_deinit();
+	sequence_deinit();
 	return single_release(inode, file);
 }
 

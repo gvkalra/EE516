@@ -1,4 +1,4 @@
-#include "manager.h"
+#include "sequence.h"
 #include "sorting.h"
 #include "utils.h"
 
@@ -7,7 +7,7 @@
 #include <linux/list_sort.h>
 #include <linux/slab.h>
 
-#define INIT_MANAGER(e) \
+#define INIT_SEQUENCE(e) \
 {											\
 	.entries = LIST_HEAD_INIT(e.entries),	\
 	.pid = 0,								\
@@ -19,17 +19,17 @@
 	.total_io = 0,							\
 }
 
-struct manager_entry manager_init_entry = INIT_MANAGER(manager_init_entry);
+struct sequence_entry sequence_init_entry = INIT_SEQUENCE(sequence_init_entry);
 
-static struct manager_entry *
-alloc_manager_node(pid_t pid, const char *name,
+static struct sequence_entry *
+alloc_sequence_node(pid_t pid, const char *name,
 	unsigned long virt, long rss,
 	unsigned long long disk_read, unsigned long long disk_write,
 	unsigned long long total_io)
 {
-	struct manager_entry *entry;
+	struct sequence_entry *entry;
 
-	entry = kmalloc(sizeof(struct manager_entry), GFP_KERNEL);
+	entry = kmalloc(sizeof(struct sequence_entry), GFP_KERNEL);
 	if (entry == NULL)
 		return NULL;
 
@@ -46,19 +46,19 @@ alloc_manager_node(pid_t pid, const char *name,
 }
 
 static void
-free_manager_node(struct manager_entry *entry)
+free_sequence_node(struct sequence_entry *entry)
 {
 	kfree(entry);
 }
 
 static int
-sort_manager_entries(void *priv, struct list_head *a, struct list_head *b)
+sort_sequence_entries(void *priv, struct list_head *a, struct list_head *b)
 {
-	struct manager_entry *entry_a, *entry_b;
+	struct sequence_entry *entry_a, *entry_b;
 	int sort_order;
 
-	entry_a = list_entry(a, struct manager_entry, entries);
-	entry_b = list_entry(b, struct manager_entry, entries);
+	entry_a = list_entry(a, struct sequence_entry, entries);
+	entry_b = list_entry(b, struct sequence_entry, entries);
 	sort_order = get_current_sort_order();
 
 	switch (sort_order) {
@@ -74,14 +74,14 @@ sort_manager_entries(void *priv, struct list_head *a, struct list_head *b)
 	}
 }
 
-int manager_show(struct seq_file *m, void *v)
+int sequence_show(struct seq_file *m, void *v)
 {
 	struct list_head *cursor, *temp;
-	struct manager_entry *entry;
+	struct sequence_entry *entry;
 	dbg("");
 
-	list_for_each_safe(cursor, temp, &manager_init_entry.entries) {
-		entry = list_entry(cursor, struct manager_entry, entries);
+	list_for_each_safe(cursor, temp, &sequence_init_entry.entries) {
+		entry = list_entry(cursor, struct sequence_entry, entries);
 
 		/* print information */
 		seq_printf(m, "%u \t %s \t "
@@ -100,10 +100,10 @@ int manager_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-int manager_init(void)
+int sequence_init(void)
 {
 	struct task_struct *tsk, *t;
-	struct manager_entry *entry;
+	struct sequence_entry *entry;
 	char name[TASK_COMM_LEN];
 	unsigned long virt;
 	long rss;
@@ -133,7 +133,7 @@ int manager_init(void)
 			task_io_accounting_add(&acct, &t->ioac);
 
 		/* Allocate node */
-		entry = alloc_manager_node(task_pid_nr(tsk),
+		entry = alloc_sequence_node(task_pid_nr(tsk),
 			get_task_comm(name, tsk),
 			virt, rss,
 			acct.read_bytes, acct.write_bytes,
@@ -144,27 +144,27 @@ int manager_init(void)
 		}
 
 		/* Add to list */
-		list_add(&entry->entries, &manager_init_entry.entries);
+		list_add(&entry->entries, &sequence_init_entry.entries);
 	}
 
 	/* Sort list */
-	list_sort(NULL, &manager_init_entry.entries, sort_manager_entries);
+	list_sort(NULL, &sequence_init_entry.entries, sort_sequence_entries);
 
 	return 0;
 }
 
-void manager_deinit(void)
+void sequence_deinit(void)
 {
 	struct list_head *cursor, *temp;
-	struct manager_entry *entry;
+	struct sequence_entry *entry;
 	dbg("");
 
-	list_for_each_safe(cursor, temp, &manager_init_entry.entries) {
-		entry = list_entry(cursor, struct manager_entry, entries);
+	list_for_each_safe(cursor, temp, &sequence_init_entry.entries) {
+		entry = list_entry(cursor, struct sequence_entry, entries);
 		dbg("name: [%s] pid: [%d]", entry->name, entry->pid);
 		list_del(cursor);
-		free_manager_node(entry);
+		free_sequence_node(entry);
 	}
 
-	dbg("Is empty? %d", list_empty(&manager_init_entry.entries));
+	dbg("Is empty? %d", list_empty(&sequence_init_entry.entries));
 }
