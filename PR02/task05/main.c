@@ -1,4 +1,3 @@
-#include "sequence.h"
 #include "sorting.h"
 #include "manager.h"
 #include "utils.h"
@@ -15,7 +14,6 @@ static struct proc_dir_entry *ps;
 static int
 pl_open(struct inode *inode, struct file *file)
 {
-	struct seq_operations *sops;
 	int ret;
 	dbg("");
 
@@ -29,11 +27,7 @@ pl_open(struct inode *inode, struct file *file)
 		return ret;
 	}
 
-	/* initialize sequential file, register operations
-	 * Ref: https://www.kernel.org/doc/htmldocs/filesystems/API-seq-open.html
-	*/
-	sops = get_sequence_ops();
-	return seq_open(file, sops);
+	return single_open(file, manager_show, NULL);
 }
 
 static int
@@ -42,7 +36,7 @@ pl_release(struct inode *inode, struct file *file)
 	dbg("");
 
 	manager_deinit();
-	return seq_release(inode, file);
+	return single_release(inode, file);
 }
 
 /* file operations */

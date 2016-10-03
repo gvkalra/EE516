@@ -74,6 +74,32 @@ sort_manager_entries(void *priv, struct list_head *a, struct list_head *b)
 	}
 }
 
+int manager_show(struct seq_file *m, void *v)
+{
+	struct list_head *cursor, *temp;
+	struct manager_entry *entry;
+	dbg("");
+
+	list_for_each_safe(cursor, temp, &manager_init_entry.entries) {
+		entry = list_entry(cursor, struct manager_entry, entries);
+
+		/* print information */
+		seq_printf(m, "%u \t %s \t "
+		"%lu \t %lu \t "
+		"%llu \t %llu \t "
+		"%llu\n",
+		entry->pid,
+		entry->name,
+		entry->virt,
+		entry->rss,
+		entry->disk_read,
+		entry->disk_write,
+		entry->total_io);
+	}
+
+	return 0;
+}
+
 int manager_init(void)
 {
 	struct task_struct *tsk, *t;

@@ -2,6 +2,7 @@
 
 #include <linux/kernel.h>
 #include <linux/sched.h>
+#include <linux/seq_file.h>
 
 struct manager_entry {
 	struct list_head entries;
@@ -22,3 +23,4 @@ extern struct manager_entry manager_init_entry;
 
 int manager_init(void);
 void manager_deinit(void);
+int manager_show(struct seq_file *seq, void *v);
