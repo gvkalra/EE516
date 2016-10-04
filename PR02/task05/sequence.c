@@ -80,14 +80,19 @@ int sequence_show(struct seq_file *m, void *v)
 	struct sequence_entry *entry;
 	dbg("");
 
+	/* title */
+	seq_printf(m, "================ Process Monitoring Manager for EE516 ================\n");
+
+	/* header */
+	seq_printf(m, "PID       ProcessName         VIRT(KB)            "
+		"RSS Mem(KB)         DiskRead(KB)        DiskWrite(KB)       "
+		"Total I/O(KB)       \n");
+
 	list_for_each_safe(cursor, temp, &sequence_init_entry.entries) {
 		entry = list_entry(cursor, struct sequence_entry, entries);
 
 		/* print information */
-		seq_printf(m, "%u \t %s \t "
-		"%lu \t %lu \t "
-		"%llu \t %llu \t "
-		"%llu\n",
+		seq_printf(m, "%-10u%-20s%-20lu%-20lu%-20llu%-20llu%-20llu\n",
 		entry->pid,
 		entry->name,
 		entry->virt,
