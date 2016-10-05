@@ -52,6 +52,8 @@ pl_seq_start(struct seq_file *m, loff_t *pos)
 {
 	dbg("");
 
+	dbg("init_task: [%p] pos: [%lld]", &init_task, *pos);
+
 	/* new sequence, return init_task */
 	if (*pos == 0) {
 		return &init_task;
@@ -73,8 +75,12 @@ pl_seq_next(struct seq_file *m, void *v, loff_t *pos)
 	c_tsk = v;
 
 	/* return next task */
-	if ((n_tsk = next_task(c_tsk)) != &init_task)
+	if ((n_tsk = next_task(c_tsk)) != &init_task) {
+		dbg("n_tsk: [%p]", n_tsk);
 		return n_tsk;
+	}
+
+	dbg("init_task: [%p] c_tsk: [%p] n_tsk: [%p] pos: [%lld]", &init_task, c_tsk, n_tsk, *pos);
 
 	/* if next task == init_task, terminate */
 	return NULL;
