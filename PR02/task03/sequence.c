@@ -94,8 +94,15 @@ pl_seq_show(struct seq_file *m, void *v)
 	long rss = 0;
 	dbg("");
 
+	/* It is possible for active_mm to be NULL.
+	 * In this case, we simply assume VIRT and RSS to be 0.
+	 * Ref: https://www.kernel.org/doc/Documentation/vm/active_mm.txt
+	 */
 	if (tsk->active_mm != NULL) {
+		/* VIRT memory */
 		virt = tsk->active_mm->total_vm;
+
+		/* RSS Memory */
 		rss += atomic_long_read(&tsk->active_mm->rss_stat.count[MM_FILEPAGES]);
 		rss += atomic_long_read(&tsk->active_mm->rss_stat.count[MM_ANONPAGES]);
 	}
