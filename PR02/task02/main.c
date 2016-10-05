@@ -50,6 +50,7 @@ pl_module_init(void)
 {
 	dbg("");
 
+	/* create /proc/proc_list */
 	pl = proc_create(PROC_NAME, 0, NULL, &fops);
 	if (pl == NULL) {
 		err("Failed to create proc_list");
