@@ -96,7 +96,10 @@ pl_seq_show(struct seq_file *m, void *v)
 
 	dbg("");
 
-	/* account each thread */
+	/* account each thread
+	 * Ref: https://github.com/torvalds/linux/blob/master/fs/proc/base.c
+	 * Function: do_io_accounting()
+	*/
 	t = tsk;
 	task_io_accounting_add(&acct, &tsk->signal->ioac);
 	while_each_thread(tsk, t)
