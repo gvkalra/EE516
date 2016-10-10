@@ -1,6 +1,6 @@
 MODNAME := procmon
 obj-m := ${MODNAME}.o
-${MODNAME}-objs := main.o sequence.o sorting.o
+${MODNAME}-objs := main.o pm_list.o sort.o
 
 KDIR := /lib/modules/$(shell uname -r)/build
 

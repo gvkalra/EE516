@@ -72,13 +72,14 @@ pl_show(struct seq_file *m, void *v)
 		 * Ref: https://www.kernel.org/doc/Documentation/vm/active_mm.txt
 		 */
 		if (tsk->active_mm != NULL) {
-			/* VIRT memory (x4 because each page is 4 Bytes) */
-			virt = 4 * tsk->active_mm->total_vm;
+			/* VIRT memory */
+			virt = tsk->active_mm->total_vm;
+			virt *= (PAGE_SIZE >> 10); /* convert pages to KB */
 
 			/* RSS Memory */
 			rss += atomic_long_read(&tsk->active_mm->rss_stat.count[MM_FILEPAGES]);
 			rss += atomic_long_read(&tsk->active_mm->rss_stat.count[MM_ANONPAGES]);
-			rss *= 4; /* x4 because each page is 4 Bytes */
+			rss *= (PAGE_SIZE >> 10); /* convert pages to KB */
 		}
 
 		/* print information */

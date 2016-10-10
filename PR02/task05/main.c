@@ -1,48 +1,58 @@
-#include "sorting.h"
-#include "sequence.h"
+#include "sort.h"
+#include "pm_list.h"
 #include "utils.h"
 
 #include <linux/module.h>
 #include <linux/proc_fs.h>
 
 #define PROC_NAME "procmon"
-#define PROC_SORT "procmon_sorting"
 
-static struct proc_dir_entry *pl;
-static struct proc_dir_entry *ps;
+static struct proc_dir_entry *pm;
 
 static int
-pl_open(struct inode *inode, struct file *file)
+pm_show(struct seq_file *m, void *v)
+{
+	dbg("");
+
+	/* show pm_list */
+	return pm_list_show(m);
+}
+
+static int
+pm_open(struct inode *inode, struct file *file)
 {
 	int ret;
 	dbg("");
 
-	/* initialize sequence
+	/* initialize pm_list
 	 * it means to parse all processes & save them in
-	 * linked list owned by procmon
+	 * linked list owned by this module
 	*/
-	ret = sequence_init();
+	ret = pm_list_init();
 	if (ret < 0) {
-		err("Failed to initialize sequence: %d", ret);
+		err("Failed to initialize pm_list: %d", ret);
 		return ret;
 	}
 
-	return single_open(file, sequence_show, NULL);
+	return single_open(file, pm_show, NULL);
 }
 
 static int
-pl_release(struct inode *inode, struct file *file)
+pm_release(struct inode *inode, struct file *file)
 {
 	dbg("");
 
-	sequence_deinit();
+	/* clean-up pm_list */
+	pm_list_deinit();
+
+	/* release sequence file */
 	return single_release(inode, file);
 }
 
 /* file operations */
-static struct file_operations fops_pl = {
+static struct file_operations fops_pm = {
 	.owner = THIS_MODULE,
-	.open = pl_open,
+	.open = pm_open,
 
 	/* read method for sequential files */
 	.read = seq_read,
@@ -51,54 +61,56 @@ static struct file_operations fops_pl = {
 	.llseek = seq_lseek,
 
 	/* free the structures associated with sequential file */
-	.release = pl_release,
+	.release = pm_release,
 };
 
 static void
-_pl_module_exit(void)
+_pm_module_exit(void)
 {
 	dbg("");
 
-	if (pl != NULL)
-		proc_remove(pl);
+	/* de-initialize sorting module */
+	sort_module_exit();
 
-	if (ps != NULL)
-		proc_remove(ps);
+	/* remove procmon */
+	if (pm != NULL)
+		proc_remove(pm);
 }
 
 static int __init
-pl_module_init(void)
+pm_module_init(void)
 {
+	int ret;
 	dbg("");
 
-	/* procmon */
-	pl = proc_create(PROC_NAME, 0, NULL, &fops_pl);
-	if (pl == NULL) {
+	/* create /proc/procmon */
+	pm = proc_create(PROC_NAME, 0, NULL, &fops_pm);
+	if (pm == NULL) {
 		err("Failed to create procmon");
 		goto error;
 	}
 
-	/* procmon_sorting */
-	ps = proc_create(PROC_SORT, 0, NULL, get_sorting_ops());
-	if (ps == NULL) {
-		err("Failed to create procmon_sorting");
+	/* initialize sorting module */
+	ret = sort_module_init();
+	if (ret < 0) {
+		err("Failed to initialize sorting module");
 		goto error;
 	}
 	return 0;
 
 error:
-	_pl_module_exit();
+	_pm_module_exit();
 	return -1;
 }
 
 static void __exit
-pl_module_exit(void)
+pm_module_exit(void)
 {
-	_pl_module_exit();
+	_pm_module_exit();
 }
 
-module_init(pl_module_init);
-module_exit(pl_module_exit);
+module_init(pm_module_init);
+module_exit(pm_module_exit);
 
 MODULE_AUTHOR("Gaurav Kalra");
 MODULE_DESCRIPTION("PR02 Sorting Features");

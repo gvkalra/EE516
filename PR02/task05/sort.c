@@ -1,29 +1,36 @@
-#include "sorting.h"
+#include "sort.h"
 #include "utils.h"
 
 #include <linux/fs.h>
+#include <linux/proc_fs.h>
 #include <linux/uaccess.h>
 #include <linux/seq_file.h>
 
 #define BUF_SIZE 512
+#define PROC_SORT "procmon_sorting"
 
+/* Assume default sort order as PID */
 static int sort_order = SORT_ORDER_PID;
+static struct proc_dir_entry *ps;
 
 static int
-ps_show(struct seq_file *m, void *v)
+sort_show(struct seq_file *m, void *v)
 {
 	switch (sort_order) {
 	case SORT_ORDER_VIRT:
 		seq_printf(m, "PID \t [VIRT] \t RSS \t I/O\n");
 		break;
+
 	case SORT_ORDER_RSS:
 		seq_printf(m, "PID \t VIRT \t [RSS] \t I/O\n");
 		break;
+
 	case SORT_ORDER_IO:
 		seq_printf(m, "PID \t VIRT \t RSS \t [I/O]\n");
 		break;
+
 	case SORT_ORDER_PID:
-	default:
+	default: /* fallthrough */
 		seq_printf(m, "[PID] \t VIRT \t RSS \t I/O\n");
 		break;
 	}
@@ -32,20 +39,22 @@ ps_show(struct seq_file *m, void *v)
 }
 
 static int
-ps_open(struct inode *inode, struct file *file)
+sort_open(struct inode *inode, struct file *file)
 {
 	dbg("");
-	return single_open(file, ps_show, NULL);
+	return single_open(file, sort_show, NULL);
 }
 
 static ssize_t
-ps_write(struct file *file, const char __user *user_buf, size_t length, loff_t *offset)
+sort_write(struct file *file, const char __user *user_buf, size_t length, loff_t *offset)
 {
 	char buf[BUF_SIZE];
 	dbg("");
 
+	/* clear buffer */
 	memset(buf, 0x00, sizeof(buf));
 
+	/* resize */
 	if (length > BUF_SIZE)
 		length = BUF_SIZE;
 
@@ -58,6 +67,7 @@ ps_write(struct file *file, const char __user *user_buf, size_t length, loff_t *
 
 	dbg("buf: [%s]", buf);
 
+	/* set sorting order */
 	if (strcmp(buf, "pid") == 0)
 		sort_order = SORT_ORDER_PID;
 	else if (strcmp(buf, "virt") == 0)
@@ -76,23 +86,52 @@ ps_write(struct file *file, const char __user *user_buf, size_t length, loff_t *
 }
 
 /* file operations */
-static struct file_operations fops = {
+static struct file_operations sort_ops = {
 	.owner = THIS_MODULE,
-	.open = ps_open,
+	.open = sort_open,
+
+	/* read method for sequential files */
 	.read = seq_read,
+
+	/* llseek method for sequential files */
 	.llseek = seq_lseek,
-	.write = ps_write,
+
+	/* write() system call on VFS */
+	.write = sort_write,
+
+	/* free the structures associated with sequential file */
 	.release = single_release,
 };
 
-inline struct file_operations *
-get_sorting_ops(void)
+void
+sort_module_exit(void)
 {
-	return &fops;
+	dbg("");
+
+	if (ps != NULL)
+		proc_remove(ps);
+}
+
+int
+sort_module_init(void)
+{
+	dbg("");
+
+	/* create /proc/procmon_sorting */
+	ps = proc_create(PROC_SORT, 0, NULL, &sort_ops);
+	if (ps == NULL) {
+		err("Failed to create procmon_sorting");
+		goto error;
+	}
+	return 0;
+
+error:
+	sort_module_exit();
+	return -1;
 }
 
 inline int
-get_current_sort_order(void)
+sort_get_order(void)
 {
 	return sort_order;
 }
