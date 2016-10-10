@@ -1,6 +1,6 @@
 MODNAME := proc_memory
 obj-m := ${MODNAME}.o
-${MODNAME}-objs := main.o sequence.o
+${MODNAME}-objs := main.o
 
 KDIR := /lib/modules/$(shell uname -r)/build
 
