@@ -1,24 +1,57 @@
-#include "sequence.h"
 #include "utils.h"
 
 #include <linux/module.h>
 #include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+#include <linux/sched.h>
 
 #define PROC_NAME "proc_list"
 
 static struct proc_dir_entry *pl;
 
+/*
+Organization of task information in kernel:
+
+	struct task_struct {
+		...
+		pid_t pid;
+		...
+		struct list_head tasks;
+		...
+		char comm[TASK_COMM_LEN];
+	};
+
+	struct list_head {
+		 struct list_head *next, *prev;
+	};
+*/
+
+static int
+pl_show(struct seq_file *m, void *v)
+{
+	struct task_struct *tsk;
+	char name[TASK_COMM_LEN];
+
+	/* header */
+	seq_printf(m, "PID       ProcessName         \n");
+
+	/* Print pid & name of each process */
+	for_each_process(tsk) {
+
+		/* print information */
+		seq_printf(m, "%-10u%-20s\n",
+			task_pid_nr(tsk),
+			get_task_comm(name, tsk));
+	}
+
+	return 0;
+}
+
 static int
 pl_open(struct inode *inode, struct file *file)
 {
-	struct seq_operations *sops;
 	dbg("");
-
-	/* initialize sequential file, register operations
-	 * Ref: https://www.kernel.org/doc/htmldocs/filesystems/API-seq-open.html
-	*/
-	sops = get_sequence_ops();
-	return seq_open(file, sops);
+	return single_open(file, pl_show, NULL);
 }
 
 /* file operations */
@@ -33,7 +66,7 @@ static struct file_operations fops = {
 	.llseek = seq_lseek,
 
 	/* free the structures associated with sequential file */
-	.release = seq_release,
+	.release = single_release,
 };
 
 static void
