@@ -10,6 +10,11 @@
 		fprintf(stderr, "<%s:%d> " fmt "\n", __func__, __LINE__, ##args); \
 	} while (0)
 
+#define info(fmt,args...) \
+    do { \
+        fprintf(stdout, fmt "\n", ##args); \
+    } while (0)
+
 #ifdef DEBUG_ENABLE
 	#define dbg(fmt,args...) \
 		do { \
