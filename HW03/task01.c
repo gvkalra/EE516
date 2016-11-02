@@ -22,10 +22,13 @@
 */
 
 static void
-print_stat(const char *name, int fd)
+print_stat(int fd)
 {
     struct stat sb;
     int ret;
+    char proc_fd[128] = {'\0',},
+         link_value[1024] = {'\0',};
+    ssize_t bytes_read;
 
     ret = fstat(fd, &sb);
     if (ret != 0) {
@@ -33,7 +36,17 @@ print_stat(const char *name, int fd)
         return;
     }
 
-    info("[8] fstat() => %s", name);
+    snprintf(proc_fd, sizeof(proc_fd), "/proc/self/fd/%u", fd);
+    bytes_read = readlink(proc_fd, link_value, sizeof(link_value));
+    if (bytes_read == -1) {
+        err("readlink() failed: [%s]", strerror(errno));
+        snprintf(link_value, sizeof(link_value), "UNKNOWN");
+    } else {
+        link_value[bytes_read] = '\0';
+        info("[7] readlink() : success => %s", link_value);
+    }
+
+    info("[8] fstat() => %s", link_value);
     info("\tst_dev : %lu", sb.st_dev);
     info("\tst_ino : %lu", sb.st_ino);
     info("\tst_mode : %d", sb.st_mode);
@@ -47,6 +60,7 @@ print_stat(const char *name, int fd)
     info("\tst_atime : %ld", sb.st_atime);
     info("\tst_mtime : %ld", sb.st_mtime);
     info("\tst_ctime : %ld", sb.st_ctime);
+
 }
 
 static void
@@ -79,8 +93,11 @@ list_files(const char *dir_path)
 int main(int argc, const char *argv[])
 {
 #define FILENAME "task01.dat"
+#define HARDLINK_SUFFIX "-hardlink"
+#define SOFTLINK_SUFFIX "-softlink"
     int fd = -1, ret = 0;
     char *cwd_path = NULL;
+    int soft_link = 0, hard_link = 0;
 
     /* Find current working directory
      * an extension to the POSIX.1-2001 standard, glibc's getcwd()
@@ -107,7 +124,7 @@ int main(int argc, const char *argv[])
     }
 
     list_files(cwd_path);
-    print_stat(FILENAME, fd);
+    print_stat(fd);
 
     info("##### Changing permissions #####");
 
@@ -120,7 +137,7 @@ int main(int argc, const char *argv[])
         info("[3] fchmod() : success");
     }
 
-    print_stat(FILENAME, fd);
+    print_stat(fd);
 
     info("##### Changing owner to root #####");
 
@@ -133,7 +150,7 @@ int main(int argc, const char *argv[])
         info("[4] fchown() : success => donated to root");
     }
 
-    print_stat(FILENAME, fd);
+    print_stat(fd);
 
     info("##### Reclaiming ownership #####");
 
@@ -146,7 +163,31 @@ int main(int argc, const char *argv[])
         info("[4] fchown() : success => ownership returned");
     }
 
-    print_stat(FILENAME, fd);
+    print_stat(fd);
+
+    info("##### Creating hard link #####");
+
+    if (link(FILENAME, FILENAME HARDLINK_SUFFIX) != 0) {
+        err("link() failed: [%s]", strerror(errno));
+        ret = 1;
+        goto exit;
+    } else {
+        info("[5] link() : success => %s", FILENAME HARDLINK_SUFFIX);
+        hard_link = 1;
+    }
+
+    info("##### Creating soft link #####");
+
+    if (symlink(FILENAME, FILENAME SOFTLINK_SUFFIX) != 0) {
+        err("symlink() failed: [%s]", strerror(errno));
+        ret = 1;
+        goto exit;
+    } else {
+        info("[6] symlink : success => %s", FILENAME SOFTLINK_SUFFIX);
+        soft_link = 1;
+    }
+
+    list_files(cwd_path);
 
 exit:
     /* free cwd_path */
@@ -163,10 +204,56 @@ exit:
        if (unlink(FILENAME)) {
             err("unlink() failed: [%s]", strerror(errno));
         } else {
-            info("[2] unlink() : success");
+            info("[2] unlink() : success => %s", FILENAME);
+        }
+    }
+
+    /* at this point we have unlinked() FILENAME
+     * however, hard & soft links still exist.
+     * let's try to lseek() using them
+     */
+    fd = open(FILENAME HARDLINK_SUFFIX, O_RDONLY);
+    if (fd == -1) {
+        err("open() failed: [%s]", strerror(errno));
+        /* skip seeking */
+    } else {
+        if (lseek(fd, 0, SEEK_END) == (off_t)-1) {
+            err("lseek() failed: [%s]", strerror(errno));
+        }
+        info("[1] lseek() : success => %s", FILENAME HARDLINK_SUFFIX);
+        close(fd);
+    }
+
+    fd = open(FILENAME SOFTLINK_SUFFIX, O_RDONLY);
+    if (fd == -1) {
+        err("open() failed: [%s]", strerror(errno));
+        /* skip seeking */
+    } else {
+        if (lseek(fd, 0, SEEK_END) == (off_t)-1) {
+            err("lseek() failed: [%s]", strerror(errno));
+        }
+        info("[1] lseek() : success => %s", FILENAME SOFTLINK_SUFFIX);
+        close(fd);
+    }
+
+    if (hard_link) {
+        if (unlink(FILENAME HARDLINK_SUFFIX)) {
+            err("unlink() failed [%s]", strerror(errno));
+        } else {
+            info("[2] unlink() : success => %s", FILENAME HARDLINK_SUFFIX);
+        }
+    }
+
+    if (soft_link) {
+        if (unlink(FILENAME SOFTLINK_SUFFIX)) {
+            err("unlink() failed: [%s]", strerror(errno));
+        } else {
+            info("[2] unlink() : success => %s", FILENAME SOFTLINK_SUFFIX);
         }
     }
 
     return ret;
 #undef FILENAME
+#undef SOFTLINK_SUFFIX
+#undef HARDLINK_SUFFIX
 }
