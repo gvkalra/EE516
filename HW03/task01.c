@@ -150,24 +150,24 @@ create_links(char *cwd_path)
 
 	/* hardlink FILENAME */
 	if (link(FILENAME, FILENAME HARDLINK_SUFFIX) != 0) {
-        err("link() failed: [%s]", strerror(errno));
-        goto error;
-    } else {
-        info("[5] link() : success => %s", FILENAME HARDLINK_SUFFIX);
-        hard_link = 1;
-    }
+		err("link() failed: [%s]", strerror(errno));
+		goto error;
+	} else {
+		info("[5] link() : success => %s", FILENAME HARDLINK_SUFFIX);
+		hard_link = 1;
+	}
 
-    /* softlink FILENAME */
-    if (symlink(FILENAME, FILENAME SOFTLINK_SUFFIX) != 0) {
-        err("symlink() failed: [%s]", strerror(errno));
-        goto error;
-    } else {
-        info("[6] symlink : success => %s", FILENAME SOFTLINK_SUFFIX);
-        soft_link = 1;
-    }
+	/* softlink FILENAME */
+	if (symlink(FILENAME, FILENAME SOFTLINK_SUFFIX) != 0) {
+		err("symlink() failed: [%s]", strerror(errno));
+		goto error;
+	} else {
+		info("[6] symlink : success => %s", FILENAME SOFTLINK_SUFFIX);
+		soft_link = 1;
+	}
 
-    /* list files */
-    list_files(cwd_path);
+	/* list files */
+	list_files(cwd_path);
 	return 0;
 
 error:
@@ -270,33 +270,34 @@ int main(int argc, const char *argv[])
 		err("getcwd() failed: [%s]", strerror(errno));
 		goto error;
 	}
-    info("[10] getcwd() : %s", cwd_path);
 
-    info("\n##### Creating %s #####\n", FILENAME);
+	info("[10] getcwd() : %s", cwd_path);
 
-    /* create task01.dat in current directory */
-    fd = open(FILENAME, O_WRONLY | O_CREAT | O_EXCL, S_IRWXU);
-    if (fd == -1) {
-        err("open() failed: [%s]", strerror(errno));
-        goto error;
-    }
+	info("\n##### Creating %s #####\n", FILENAME);
 
-    /* list files in cwd_path */
-    list_files(cwd_path);
-    /* print statistics of newly created file */
-    print_stat(fd);
+	/* create task01.dat in current directory */
+	fd = open(FILENAME, O_WRONLY | O_CREAT | O_EXCL, S_IRWXU);
+	if (fd == -1) {
+		err("open() failed: [%s]", strerror(errno));
+		goto error;
+	}
 
-    info("\n##### Permission Play #####\n");
-    permission_play(fd);
+	/* list files in cwd_path */
+	list_files(cwd_path);
+	/* print statistics of newly created file */
+	print_stat(fd);
 
-    info("\n##### Linking Play #####\n");
-    links_exist = !create_links(cwd_path);
+	info("\n##### Permission Play #####\n");
+	permission_play(fd);
 
-    info("\n##### Seeking/Linking Play #####\n");
-    if (links_exist)
-    	links_play(fd, cwd_path);
+	info("\n##### Linking Play #####\n");
+	links_exist = !create_links(cwd_path);
 
-    return 0;
+	info("\n##### Seeking/Linking Play #####\n");
+	if (links_exist)
+		links_play(fd, cwd_path);
+
+	return 0;
 
 error:
 	/* free cwd_path */
