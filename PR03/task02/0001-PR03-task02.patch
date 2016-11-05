@@ -1,0 +1,71 @@
+From f46a75622daeef672104848362cf741aef7a8782 Mon Sep 17 00:00:00 2001
+From: Gaurav Kalra <gvkalra@kaist.ac.kr>
+Date: Sat, 5 Nov 2016 16:07:41 +0900
+Subject: [PATCH] PR03: task02
+
+---
+ arch/x86/syscalls/syscall_64.tbl |  3 +++
+ include/linux/syscalls.h         |  1 +
+ kernel/Makefile                  |  3 ++-
+ kernel/mysyscall.c               | 10 ++++++++++
+ 4 files changed, 16 insertions(+), 1 deletion(-)
+ create mode 100644 kernel/mysyscall.c
+
+diff --git a/arch/x86/syscalls/syscall_64.tbl b/arch/x86/syscalls/syscall_64.tbl
+index 281150b..3036770 100644
+--- a/arch/x86/syscalls/syscall_64.tbl
++++ b/arch/x86/syscalls/syscall_64.tbl
+@@ -329,6 +329,9 @@
+ 320	common	kexec_file_load		sys_kexec_file_load
+ 321	common	bpf			sys_bpf
+ 
++# added by gvkalra
++322	common	mysyscall		sys_mysyscall
++
+ #
+ # x32-specific system call numbers start at 512 to avoid cache impact
+ # for native 64-bit operation.
+diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
+index bda9b81..9af5767 100644
+--- a/include/linux/syscalls.h
++++ b/include/linux/syscalls.h
+@@ -877,4 +877,5 @@ asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
+ asmlinkage long sys_getrandom(char __user *buf, size_t count,
+ 			      unsigned int flags);
+ asmlinkage long sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
++asmlinkage long sys_mysyscall(int n);
+ #endif
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 17ea6d4..fe3ec0d 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -9,7 +9,8 @@ obj-y     = fork.o exec_domain.o panic.o \
+ 	    extable.o params.o \
+ 	    kthread.o sys_ni.o nsproxy.o \
+ 	    notifier.o ksysfs.o cred.o reboot.o \
+-	    async.o range.o groups.o smpboot.o
++	    async.o range.o groups.o smpboot.o \
++	    mysyscall.o
+ 
+ ifdef CONFIG_FUNCTION_TRACER
+ # Do not trace debug files and internal ftrace files
+diff --git a/kernel/mysyscall.c b/kernel/mysyscall.c
+new file mode 100644
+index 0000000..882b946
+--- /dev/null
++++ b/kernel/mysyscall.c
+@@ -0,0 +1,10 @@
++#include <linux/unistd.h>
++#include <linux/errno.h>
++#include <linux/kernel.h>
++#include <linux/sched.h>
++
++asmlinkage long sys_mysyscall(int n)
++{
++	printk("mysyscall: n=%d\n", n);
++	return n * n;
++}
+\ No newline at end of file
+-- 
+2.7.4
+
