@@ -1,14 +1,14 @@
-From f46a75622daeef672104848362cf741aef7a8782 Mon Sep 17 00:00:00 2001
+From 827324e5504bd239e9e464f86a9fe48f94c6d20f Mon Sep 17 00:00:00 2001
 From: Gaurav Kalra <gvkalra@kaist.ac.kr>
-Date: Sat, 5 Nov 2016 16:07:41 +0900
-Subject: [PATCH] PR03: task02
+Date: Sat, 5 Nov 2016 19:48:36 +0900
+Subject: [PATCH] PR03-task02 : Make your own system call
 
 ---
  arch/x86/syscalls/syscall_64.tbl |  3 +++
  include/linux/syscalls.h         |  1 +
  kernel/Makefile                  |  3 ++-
- kernel/mysyscall.c               | 10 ++++++++++
- 4 files changed, 16 insertions(+), 1 deletion(-)
+ kernel/mysyscall.c               | 11 +++++++++++
+ 4 files changed, 17 insertions(+), 1 deletion(-)
  create mode 100644 kernel/mysyscall.c
 
 diff --git a/arch/x86/syscalls/syscall_64.tbl b/arch/x86/syscalls/syscall_64.tbl
@@ -26,14 +26,14 @@ index 281150b..3036770 100644
  # x32-specific system call numbers start at 512 to avoid cache impact
  # for native 64-bit operation.
 diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
-index bda9b81..9af5767 100644
+index bda9b81..b84e05a 100644
 --- a/include/linux/syscalls.h
 +++ b/include/linux/syscalls.h
 @@ -877,4 +877,5 @@ asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
  asmlinkage long sys_getrandom(char __user *buf, size_t count,
  			      unsigned int flags);
  asmlinkage long sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
-+asmlinkage long sys_mysyscall(int n);
++asmlinkage long sys_mysyscall(int a, int b);
  #endif
 diff --git a/kernel/Makefile b/kernel/Makefile
 index 17ea6d4..fe3ec0d 100644
@@ -51,19 +51,20 @@ index 17ea6d4..fe3ec0d 100644
  # Do not trace debug files and internal ftrace files
 diff --git a/kernel/mysyscall.c b/kernel/mysyscall.c
 new file mode 100644
-index 0000000..882b946
+index 0000000..00cc379
 --- /dev/null
 +++ b/kernel/mysyscall.c
-@@ -0,0 +1,10 @@
+@@ -0,0 +1,11 @@
 +#include <linux/unistd.h>
 +#include <linux/errno.h>
 +#include <linux/kernel.h>
 +#include <linux/sched.h>
 +
-+asmlinkage long sys_mysyscall(int n)
++asmlinkage long sys_mysyscall(int a, int b)
 +{
-+	printk("mysyscall: n=%d\n", n);
-+	return n * n;
++	printk("Student ID: 20164593\n");
++	printk("mysyscall: a=%d, b=%d\n", a, b);
++	return a + b;
 +}
 \ No newline at end of file
 -- 
