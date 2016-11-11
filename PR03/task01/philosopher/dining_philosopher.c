@@ -28,12 +28,12 @@
 #define PHIL_STATE_EATING   2 /* philosopher is eating */
 
 /* convenience macros */
-#define PHIL_RIGHT(i) ((i + PHIL_TOTAL - 1) % PHIL_TOTAL) /* right of philosopher i */
-#define PHIL_LEFT(i) ((i + 1) % PHIL_TOTAL) /* left of philosopher i */
+#define PHIL_LEFT(i) ((i + PHIL_TOTAL - 1) % PHIL_TOTAL) /* left of philosopher i */
+#define PHIL_RIGHT(i) ((i + 1) % PHIL_TOTAL) /* right of philosopher i */
 
 int phil_state[PHIL_TOTAL] = {PHIL_STATE_THINKING,}; /* tracks current state (0,1,2) of philosopher */
-sem_t mutex; /* for critical section */
-sem_t phil_sema[PHIL_TOTAL]; /* for synchronization between philosophers */
+sem_t mutex; /* for critical section (initial value = 1) */
+sem_t phil_sema[PHIL_TOTAL]; /* for synchronization between philosophers (initial value = 0) */
 
 /* philosopher thread */
 static void *philosopher(void *arg);
@@ -43,7 +43,7 @@ static void *philosopher(void *arg);
  * In this case, we sleep() for thinking
  */
 static void
-__simulate_thinking(int id)
+simulate_thinking(int id)
 {
 	info("Philosopher [%d] : Thinking", id);
 	sleep((rand() % 2) + 1);
@@ -54,7 +54,7 @@ __simulate_thinking(int id)
  * In this case, we sleep() for eating
  */
 static void
-__simulate_eating(int id)
+simulate_eating(int id)
 {
 	info("Philosopher [%d] : Eating", id);
 	sleep((rand() % 2) + 1);
@@ -113,7 +113,7 @@ int main(int argc, const char *argv[])
 }
 
 static void
-__eat_if_you_can(int id)
+eat_if_possible(int id)
 {
 	if (phil_state[id] == PHIL_STATE_HUNGRY /* 'id' is hungry */
 		&& phil_state[PHIL_LEFT(id)] != PHIL_STATE_EATING /* left is not eating */
@@ -130,22 +130,22 @@ __eat_if_you_can(int id)
 }
 
 static void
-__take_forks(int id)
+take_forks(int id)
 {
 	sem_wait(&mutex);
 	phil_state[id] = PHIL_STATE_HUNGRY;
-	__eat_if_you_can(id);
+	eat_if_possible(id);
 	sem_post(&mutex);
 
 	/* wait until philosopher 'id' is allowed to eat
 	 * who is going to tell if 'id' is allowed to eat now?
-	 *     it's neibouring philosophers in __put_forks()
+	 *     it's neibouring philosophers in put_forks()
 	 */
 	sem_wait(&phil_sema[id]);
 }
 
 static void
-__put_forks(int id)
+put_forks(int id)
 {
 	sem_wait(&mutex);
 	phil_state[id] = PHIL_STATE_THINKING;
@@ -155,8 +155,8 @@ __put_forks(int id)
 	 * this means -> neighbour should be HUNGRY
 	 * and waiting on it's semaphore (phil_sema)
 	 */
-	__eat_if_you_can(PHIL_LEFT(id)); /* left can eat? */
-	__eat_if_you_can(PHIL_RIGHT(id)); /* right can eat? */
+	eat_if_possible(PHIL_LEFT(id)); /* left can eat? */
+	eat_if_possible(PHIL_RIGHT(id)); /* right can eat? */
 	sem_post(&mutex);
 }
 
@@ -169,16 +169,16 @@ philosopher(void *arg)
 	/* forever */
 	while (1) {
 		/* Think for a while before eating */
-		__simulate_thinking(id);
+		simulate_thinking(id);
 
 		/* try acquiring forks */
-		__take_forks(id);
+		take_forks(id);
 
 		/* eat */
-		__simulate_eating(id);
+		simulate_eating(id);
 
 		/* release forks */
-		__put_forks(id);
+		put_forks(id);
 	}
 
 	/* unreachable */
