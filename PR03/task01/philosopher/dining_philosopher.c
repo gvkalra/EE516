@@ -2,10 +2,7 @@
 
 #include <pthread.h>
 #include <semaphore.h>
-
 #include <unistd.h>
-#include <sys/syscall.h>
-#define gettid() syscall(SYS_gettid)
 
 /*
  * Description:
@@ -35,8 +32,8 @@
 #define PHIL_LEFT(i) ((i + 1) % PHIL_TOTAL) /* left of philosopher i */
 
 int phil_state[PHIL_TOTAL] = {PHIL_STATE_THINKING,}; /* tracks current state (0,1,2) of philosopher */
-sem_t mutex; /* for critical section (binary semaphore) */
-sem_t fork_sema[PHIL_TOTAL]; /* for ownership of forks */
+sem_t mutex; /* for critical section */
+sem_t phil_sema[PHIL_TOTAL]; /* for synchronization between philosophers */
 
 /* philosopher thread */
 static void *philosopher(void *arg);
@@ -69,16 +66,20 @@ int main(int argc, const char *argv[])
 	int i;
 	int res;
 
-	/* initialize 'mutex' */
+	/* initialize 'mutex'
+	 * initial value 1 means it is a binary semaphore
+	 */
 	res = sem_init(&mutex, 0, 1);
 	if (res != 0) {
 		perror("sem_init failed.\n");
 		exit(1);
 	}
 
-	/* initialize 'fork_sema' */
+	/* initialize 'phil_sema' */
 	for (i = 0; i < PHIL_TOTAL; i++) {
-		res = sem_init(&fork_sema[i], 0, 0);
+		/* initial value of 0 indicates that
+		 * no philosopher is eating */
+		res = sem_init(&phil_sema[i], 0, 0);
 		if (res != 0) {
 			perror("sem_init failed.\n");
 			exit(1);
@@ -101,6 +102,13 @@ int main(int argc, const char *argv[])
 		pthread_join(threads[i], NULL);
 	}
 
+	/* destroy all semaphores */
+	sem_destroy(&mutex);
+	for (i = 0; i < PHIL_TOTAL; i++) {
+		sem_destroy(&phil_sema[i]);
+	}
+
+	/* return success */
 	return 0;
 }
 
@@ -112,8 +120,12 @@ __eat_if_you_can(int id)
 		&& phil_state[PHIL_RIGHT(id)] != PHIL_STATE_EATING) /* right is not eating */
 	{
 		phil_state[id] = PHIL_STATE_EATING;
+		/* Notice that PHIL_LEFT(id) has the same value as left side fork
+		 * so we can re-use the same macro */
 		info("Philosopher [%d] : FORK_UP (%d, %d)", id, PHIL_LEFT(id), id);
-		sem_post(&fork_sema[id]);
+
+		/* signal eating = True for philosopher 'id' */
+		sem_post(&phil_sema[id]);
 	}
 }
 
@@ -125,7 +137,11 @@ __take_forks(int id)
 	__eat_if_you_can(id);
 	sem_post(&mutex);
 
-	sem_wait(&fork_sema[id]);
+	/* wait until philosopher 'id' is allowed to eat
+	 * who is going to tell if 'id' is allowed to eat now?
+	 *     it's neibouring philosophers in __put_forks()
+	 */
+	sem_wait(&phil_sema[id]);
 }
 
 static void
@@ -135,7 +151,10 @@ __put_forks(int id)
 	phil_state[id] = PHIL_STATE_THINKING;
 	info("Philosopher [%d] : FORK_DOWN (%d, %d)", id, PHIL_LEFT(id), id);
 
-	/* be nice to adjacent philosophers */
+	/* see if neighbouring philosophers can eat
+	 * this means -> neighbour should be HUNGRY
+	 * and waiting on it's semaphore (phil_sema)
+	 */
 	__eat_if_you_can(PHIL_LEFT(id)); /* left can eat? */
 	__eat_if_you_can(PHIL_RIGHT(id)); /* right can eat? */
 	sem_post(&mutex);
