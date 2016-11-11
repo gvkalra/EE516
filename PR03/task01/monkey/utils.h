@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define DEBUG_ENABLE /* uncomment to enable debugging logs */
+//#define DEBUG_ENABLE /* uncomment to enable debugging logs */
 
 #define err(fmt,args...) \
 	do { \
