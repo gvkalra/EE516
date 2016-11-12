@@ -1,0 +1,450 @@
+From 7ea10138a3991734531c1bf99195797383c14cc5 Mon Sep 17 00:00:00 2001
+From: Gaurav Kalra <gvkalra@kaist.ac.kr>
+Date: Tue, 8 Nov 2016 21:35:03 +0900
+Subject: [PATCH] Custom semaphore
+
+---
+ arch/x86/syscalls/syscall_64.tbl |   7 +
+ include/linux/syscalls.h         |   6 +
+ kernel/Makefile                  |   3 +-
+ kernel/mysemaphore.c             | 380 +++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 395 insertions(+), 1 deletion(-)
+ create mode 100644 kernel/mysemaphore.c
+
+diff --git a/arch/x86/syscalls/syscall_64.tbl b/arch/x86/syscalls/syscall_64.tbl
+index 281150b..e867861 100644
+--- a/arch/x86/syscalls/syscall_64.tbl
++++ b/arch/x86/syscalls/syscall_64.tbl
+@@ -329,6 +329,13 @@
+ 320	common	kexec_file_load		sys_kexec_file_load
+ 321	common	bpf			sys_bpf
+ 
++# added by gvkalra
++322	common	mysema_init		sys_mysema_init
++323	common	mysema_down		sys_mysema_down
++324	common	mysema_down_userprio	sys_mysema_down_userprio
++325	common	mysema_up		sys_mysema_up
++326	common	mysema_release		sys_mysema_release
++
+ #
+ # x32-specific system call numbers start at 512 to avoid cache impact
+ # for native 64-bit operation.
+diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
+index bda9b81..d347dad 100644
+--- a/include/linux/syscalls.h
++++ b/include/linux/syscalls.h
+@@ -877,4 +877,10 @@ asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
+ asmlinkage long sys_getrandom(char __user *buf, size_t count,
+ 			      unsigned int flags);
+ asmlinkage long sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
++
++asmlinkage int sys_mysema_init(int sema_id, int start_value, int mode);
++asmlinkage int sys_mysema_down(int sema_id);
++asmlinkage int sys_mysema_down_userprio(int sema_id, int priority);
++asmlinkage int sys_mysema_up(int sema_id);
++asmlinkage int sys_mysema_release(int sema_id);
+ #endif
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 17ea6d4..62c1665 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -9,7 +9,8 @@ obj-y     = fork.o exec_domain.o panic.o \
+ 	    extable.o params.o \
+ 	    kthread.o sys_ni.o nsproxy.o \
+ 	    notifier.o ksysfs.o cred.o reboot.o \
+-	    async.o range.o groups.o smpboot.o
++	    async.o range.o groups.o smpboot.o \
++	    mysemaphore.o
+ 
+ ifdef CONFIG_FUNCTION_TRACER
+ # Do not trace debug files and internal ftrace files
+diff --git a/kernel/mysemaphore.c b/kernel/mysemaphore.c
+new file mode 100644
+index 0000000..06df509
+--- /dev/null
++++ b/kernel/mysemaphore.c
+@@ -0,0 +1,380 @@
++#include <linux/unistd.h>
++#include <linux/errno.h>
++#include <linux/kernel.h>
++#include <linux/sched.h>
++
++struct mysemaphore {
++	raw_spinlock_t lock;
++	unsigned int value;
++	unsigned int state; /* 0: inactive, 1: active */
++	unsigned int mode; /* 0: FIFO, 1: OS priority, 2: User priority */
++	struct list_head wait_list;
++};
++
++struct mysemaphore_waiter {
++	struct list_head list;
++	struct task_struct *task;
++	unsigned int priority;
++	bool up;
++};
++
++#define __MYSEMAPHORE_INITIALIZER(name)				\
++{									\
++	.lock		= __RAW_SPIN_LOCK_UNLOCKED((name).lock),	\
++	.state		= 0,						\
++	.wait_list	= LIST_HEAD_INIT((name).wait_list),		\
++}
++
++/* statically allocate 10 semaphores */
++struct mysemaphore mysema[10] = {
++	[0] = __MYSEMAPHORE_INITIALIZER(mysema[0]),
++	[1] = __MYSEMAPHORE_INITIALIZER(mysema[1]),
++	[2] = __MYSEMAPHORE_INITIALIZER(mysema[2]),
++	[3] = __MYSEMAPHORE_INITIALIZER(mysema[3]),
++	[4] = __MYSEMAPHORE_INITIALIZER(mysema[4]),
++	[5] = __MYSEMAPHORE_INITIALIZER(mysema[5]),
++	[6] = __MYSEMAPHORE_INITIALIZER(mysema[6]),
++	[7] = __MYSEMAPHORE_INITIALIZER(mysema[7]),
++	[8] = __MYSEMAPHORE_INITIALIZER(mysema[8]),
++	[9] = __MYSEMAPHORE_INITIALIZER(mysema[9]),
++};
++
++static inline int
++_down_common(struct mysemaphore *sem, long state,
++	long timeout, unsigned int priority)
++{
++	struct task_struct *task = current;
++	struct mysemaphore_waiter waiter;
++
++	list_add_tail(&waiter.list, &sem->wait_list);
++	waiter.task = task;
++	waiter.priority = priority;
++	waiter.up = false;
++
++	for (;;) {
++		if (signal_pending_state(state, task))
++			goto interrupted;
++		if (unlikely(timeout <= 0))
++			goto timed_out;
++		__set_task_state(task, state);
++		raw_spin_unlock_irq(&sem->lock);
++		timeout = schedule_timeout(timeout);
++		raw_spin_lock_irq(&sem->lock);
++		if (waiter.up)
++			return 0;
++	}
++
++timed_out:
++	list_del(&waiter.list);
++	return -1;
++
++interrupted:
++	list_del(&waiter.list);
++	return -1;
++}
++
++/* Find waiter from wait_list
++ * with lowest "prio" in task_struct
++ * low value of "prio" means high priority
++ */
++static struct mysemaphore_waiter *
++_get_lowest_prio(struct mysemaphore *sem)
++{
++	struct mysemaphore_waiter *cursor, *waiter;
++
++	/* assume first entry has highest priority */
++	waiter = list_first_entry(&sem->wait_list,
++		struct mysemaphore_waiter, list);
++
++	/* see if there is another one with higher priority */
++	list_for_each_entry(cursor, &sem->wait_list, list) {
++		if (task_prio(cursor->task) < task_prio(waiter->task)) {
++			waiter = cursor; /* update waiter */
++		}
++	}
++
++	return waiter;
++}
++
++/* Find waiter from wait_list
++ * with highest "priority" in mysemaphore_waiter
++ */
++static struct mysemaphore_waiter *
++_get_highest_user_prio(struct mysemaphore *sem)
++{
++	struct mysemaphore_waiter *cursor, *waiter;
++
++	/* assume first entry has highest priority */
++	waiter = list_first_entry(&sem->wait_list,
++		struct mysemaphore_waiter, list);
++
++	/* see if there is another one with higher priority */
++	list_for_each_entry(cursor, &sem->wait_list, list) {
++		if (cursor->priority > waiter->priority) {
++			waiter = cursor; /* update waiter */
++		}
++	}
++
++	return waiter;
++}
++
++static void
++_up_common(struct mysemaphore *sem)
++{
++	struct mysemaphore_waiter *waiter;
++	unsigned int mode;
++
++	mode = sem->mode;
++
++	/* FIFO */
++	if (mode == 0) {
++		/* wakeup the first task in queue */
++		waiter = list_first_entry(&sem->wait_list,
++			struct mysemaphore_waiter, list);
++	}
++	/* OS priority */
++	else if (mode == 1) {
++		waiter = _get_lowest_prio(sem);
++	}
++	/* User priority */
++	else if (mode == 2) {
++		waiter = _get_highest_user_prio(sem);
++	} else {
++		printk(KERN_ERR "UNKNOWN ERROR!\n");
++		return;
++	}
++
++	list_del(&waiter->list);
++	waiter->up = true;
++	wake_up_process(waiter->task);
++}
++
++static inline int
++_down_userprio_unlocked(struct mysemaphore *sem,
++	int priority)
++{
++	int ret = 0;
++	int _priority = priority;
++
++	if (sem->value > 0) {
++		sem->value--;
++	}
++	else if (sem->value == 0) {
++		if (priority < 0)
++			_priority = 0;
++		else if (priority > 100)
++			_priority = 100;
++
++		ret = _down_common(sem, TASK_UNINTERRUPTIBLE,
++			MAX_SCHEDULE_TIMEOUT, _priority);
++	}
++
++	return ret;
++}
++
++asmlinkage int
++sys_mysema_init(int sema_id, int start_value, int mode)
++{
++	unsigned long flags;
++	int ret = 0;
++	struct mysemaphore *sem = NULL;
++
++	/* sanity check */
++	if (sema_id < 0 || sema_id > 9
++		|| start_value < 0
++		|| mode < 0 || mode > 2) {
++		printk(KERN_ERR "Invalid inputs\n");
++		return -1;
++	}
++
++	sem = &mysema[sema_id];
++
++	/* acquire lock */
++	raw_spin_lock_irqsave(&sem->lock, flags);
++
++	/* already active */
++	if (sem->state) {
++		printk(KERN_ERR "Already active\n");
++		ret = -1;
++		goto exit;
++	}
++
++	/* activate */
++	sem->state = 1;
++
++	/* start value */
++	sem->value = (unsigned int)start_value;
++
++	/* mode */
++	sem->mode = (unsigned int)mode;
++
++	printk(KERN_INFO "Semaphore (%d) initialized\n", sema_id);
++
++exit:
++	/* release lock */
++	raw_spin_unlock_irqrestore(&sem->lock, flags);
++	return ret;
++}
++
++asmlinkage int
++sys_mysema_down(int sema_id)
++{
++	unsigned long flags;
++	int ret = 0;
++	struct mysemaphore *sem = NULL;
++
++	/* sanity check */
++	if (sema_id < 0 || sema_id > 9) {
++		printk(KERN_ERR "Invalid inputs\n");
++		return -1;
++	}
++
++	sem = &mysema[sema_id];
++
++	/* acquire lock */
++	raw_spin_lock_irqsave(&sem->lock, flags);
++
++	/* inactive? */
++	if (!sem->state) {
++		printk(KERN_ERR "Semaphore is not active\n");
++		ret = -1;
++		goto exit;
++	}
++
++	/* User priority */
++	if (sem->mode == 2) {
++		printk(KERN_INFO "Calling _down_userprio_unlocked()\n");
++		ret = _down_userprio_unlocked(sem, 100);
++		goto exit;
++	}
++
++	/* OS, FIFO modes */
++	if (sem->value > 0) {
++		printk(KERN_INFO "Decreasing Value()\n");
++		sem->value--;
++	} else if (sem->value == 0) {
++		printk(KERN_INFO "Calling _down_common()\n");
++		ret = _down_common(sem,
++				TASK_UNINTERRUPTIBLE,
++				MAX_SCHEDULE_TIMEOUT, 0);
++	}
++
++exit:
++	/* release lock */
++	raw_spin_unlock_irqrestore(&sem->lock, flags);
++	return ret;
++}
++
++asmlinkage int
++sys_mysema_down_userprio(int sema_id, int priority)
++{
++	unsigned long flags;
++	int ret = 0;
++	struct mysemaphore *sem = NULL;
++
++	/* sanity check */
++	if (sema_id < 0 || sema_id > 9) {
++		printk(KERN_ERR "Invalid inputs\n");
++		return -1;
++	}
++
++	sem = &mysema[sema_id];
++
++	/* acquire lock */
++	raw_spin_lock_irqsave(&sem->lock, flags);
++
++	/* inactive? */
++	if (!sem->state) {
++		printk(KERN_ERR "Semaphore is not active\n");
++		ret = -1;
++		goto exit;
++	}
++
++	ret = _down_userprio_unlocked(sem, priority);
++
++	printk(KERN_INFO "_down_userprio_unlocked() ret:%d\n", ret);
++
++exit:
++	/* release lock */
++	raw_spin_unlock_irqrestore(&sem->lock, flags);
++	return ret;
++}
++
++asmlinkage int
++sys_mysema_up(int sema_id)
++{
++	unsigned long flags;
++	int ret = 0;
++	struct mysemaphore *sem = NULL;
++
++	/* sanity check */
++	if (sema_id < 0 || sema_id > 9) {
++		printk(KERN_ERR "Invalid inputs\n");
++		return -1;
++	}
++
++	sem = &mysema[sema_id];
++
++	/* acquire lock */
++	raw_spin_lock_irqsave(&sem->lock, flags);
++
++	/* inactive? */
++	if (!sem->state) {
++		printk(KERN_ERR "Semaphore is not active\n");
++		ret = -1;
++		goto exit;
++	}
++
++	/* no sleeping process */
++	if (list_empty(&sem->wait_list)) {
++		sem->value++;
++	}
++	else {
++		_up_common(sem);
++	}
++
++exit:
++	/* release lock */
++	raw_spin_unlock_irqrestore(&sem->lock, flags);
++	return ret;
++}
++
++asmlinkage int
++sys_mysema_release(int sema_id)
++{
++	unsigned long flags;
++	int ret = 0;
++	struct mysemaphore *sem = NULL;
++
++	/* sanity check */
++	if (sema_id < 0 || sema_id > 9) {
++		printk(KERN_ERR "Invalid inputs\n");
++		return -1;
++	}
++
++	sem = &mysema[sema_id];
++
++	/* acquire lock */
++	raw_spin_lock_irqsave(&sem->lock, flags);
++
++	/* inactive? */
++	if (!sem->state) {
++		printk(KERN_ERR "Semaphore is not active\n");
++		ret = -1;
++		goto exit;
++	}
++
++	/* no sleeping process */
++	if (list_empty(&sem->wait_list)) {
++		/* deactivate */
++		sem->state = 0;
++	}
++	else {
++		ret = -1;
++	}
++
++exit:
++	/* release lock */
++	raw_spin_unlock_irqrestore(&sem->lock, flags);
++	return ret;
++} 
+\ No newline at end of file
+-- 
+1.9.1
+
