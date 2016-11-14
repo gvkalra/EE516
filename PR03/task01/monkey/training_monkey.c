@@ -61,8 +61,8 @@ static const char *color_string[] = {
 };
 
 struct {
-	int state; /* idle, thinking, training */
-	int color[2]; /* colors of ball interested in */
+	int state; /* MONKEY_STATE_* enumeration */
+	int color[2]; /* colors (BALL_COLOR_*) of ball interested in */
 } monkey_data[MONKEY_TOTAL] = {
 	{MONKEY_STATE_BORN, {BALL_COLOR_INVALID, BALL_COLOR_INVALID}},
 };
@@ -72,15 +72,10 @@ sem_t mutex; /* for critical section */
 sem_t monkey_sema[MONKEY_TOTAL]; /* for each monkey */
 
 sem_t bowl; /* banana bowl */
-int bowl_count = 2;
-
 sem_t trainer; /* trainer */
 
 /* monkey thread */
-static void *monkey(void *arg);
-
-/* trainer thread */
-static void *trainer(void *arg);
+static void *monkey_thread(void *arg);
 
 /* simulation for thinking
  * This is placeholder to mimic thinking process
@@ -129,14 +124,17 @@ int main(int argc, const char *argv[])
 		}
 	}
 
-	/* initialize 'bowl' */
-	res = sem_init(&bowl, 0, 1);
+	/* initialize 'bowl'
+	 * initial value 2 means 2 bowls are available
+	 * outside the room
+	 */
+	res = sem_init(&bowl, 0, 2);
 	if (res != 0) {
 		perror("sem_init failed.\n");
 		exit(1);
 	}
 
-	/* initialize 'trainer' */
+	/* initialize 'trainer' (there is only 1 trainer) */
 	res = sem_init(&trainer, 0, 1);
 	if (res != 0) {
 		perror("sem_init failed.\n");
@@ -148,7 +146,7 @@ int main(int argc, const char *argv[])
 
 	/* train monkeys */
 	for (i = 0; i < MONKEY_TOTAL; i++) {
-		pthread_create(&threads[i], NULL, monkey, (void *)(long)i);
+		pthread_create(&threads[i], NULL, monkey_thread, (void *)(long)i);
 	}
 
 	/* wait for all monkeys to finish */
@@ -209,7 +207,7 @@ __train_if_you_can(int id)
 	int color_1, color_2;
 	int i, can_train = 1;
 
-	/* this should be called only when monkey is ready to be trained */
+	/* function should be called only when monkey is ready to be trained */
 	assert(monkey_data[id].state == MONKEY_STATE_READY_ROOM_TRAINING);
 
 	/* find colors monkey is interested in */
@@ -235,7 +233,10 @@ __train_if_you_can(int id)
 			id, color_string[monkey_data[id].color[0]],
 			color_string[monkey_data[id].color[1]],
 			color_string[monkey_data[id].color[0]]);
-		simulate_monkey_thinking(id);
+		info("Monkey %d (%s, %s): thinking", id,
+			color_string[monkey_data[id].color[0]],
+			color_string[monkey_data[id].color[1]]);
+		sleep(0);
 		info("Monkey %d (%s, %s): takes the %s ball",
 			id, color_string[monkey_data[id].color[0]],
 			color_string[monkey_data[id].color[1]],
@@ -245,18 +246,10 @@ __train_if_you_can(int id)
 }
 
 static void
-take_and_think(int id)
+take_and_think(int id, int color_1, int color_2)
 {
-	int color_1, color_2;
-
-	/* choose 2 random colors */
-	get_two_random_colors(&color_1, &color_2);
-
 	/* save data */
 	sem_wait(&mutex);
-	info("Monkey %d (%s, %s): entered", id,
-		color_string[color_1],
-		color_string[color_2]);
 	monkey_data[id].state = MONKEY_STATE_READY_ROOM_TRAINING;
 	monkey_data[id].color[0] = color_1;
 	monkey_data[id].color[1] = color_2;
@@ -268,6 +261,7 @@ take_and_think(int id)
 	 *     other monkeys inside the room
 	*/
 	sem_wait(&monkey_sema[id]);
+	simulate_monkey_thinking(id);
 }
 
 static void
@@ -293,48 +287,55 @@ release_balls(int id)
 }
 
 static void *
-monkey(void *arg)
+monkey_thread(void *arg)
 {
 	int id = (int)(long)arg;
-	int received_bowl = 0;
+	int color_1, color_2;
 
 	dbg("Running Thread for monkey: [%d]", id);
 	sleep(0); /* give time for other monkeys to queue up */
 
 	/* wait until room is available */
 	sem_wait(&room);
-
-	dbg("Monkey [%d] : Entered", id);
+	/* choose 2 random colors */
+	get_two_random_colors(&color_1, &color_2);
+	info("Monkey %d (%s, %s): entered", id,
+		color_string[color_1], color_string[color_2]);
 	sleep(0); /* give chance for other monkeys to enter */
 
 	/* take balls & think */
-	take_and_think(id);
+	take_and_think(id, color_1, color_2);
 
 	/* release balls */
 	release_balls(id);
 
 	/* leave room */
-	info("Monkey %d : left", id);
+	info("Monkey %d (%s, %s): left", id,
+		color_string[color_1], color_string[color_2]);
 	sem_post(&room);
 
 	/* see if bowl available */
-	sem_wait(&bowl);
-	if (bowl_count != 0) {
-		bowl_count--;
-		received_bowl = 1;
-	}
-	sem_post(&bowl);
-
-	if (received_bowl) {
+	if (sem_trywait(&bowl) == 0) {
+		/* wait for trainer to put bananas in bowl */
 		sem_wait(&trainer);
+		info("Trainer: puts bananas");
+		info("Trainer: goes to sleep");
 		sem_post(&trainer);
+
+		/* eat bananas */
+		info("Monkey %d (%s, %s): eat bananas", id,
+			color_string[color_1],
+			color_string[color_2]);
+		sleep((rand() % 9) + 1);
+
+		/* release bowl */
+		sem_post(&bowl);
+	} else {
+		info("Monkey %d (%s, %s): eat apples", id,
+			color_string[color_1],
+			color_string[color_2]);
+		sleep((rand() % 9) + 1);
 	}
 
 	return NULL;
-}
-
-static void *
-trainer(void *arg)
-{
-	
 }
