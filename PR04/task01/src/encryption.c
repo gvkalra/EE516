@@ -44,6 +44,10 @@ void enc_decrypt_data
     key_add = BB_DATA->key_add;
     key_shift = BB_DATA->key_shift;
 
+    /* decryption is disabled */
+    if (key_add == 0 && key_shift == 0)
+        return;
+
     log_msg("bb_decrypt() : ADD[%u] SHIFT[%u]\n", key_add, key_shift);
 
     log_hex_dump(" ", size, buf);
@@ -70,13 +74,17 @@ int enc_encrypt_data
     key_add = BB_DATA->key_add;
     key_shift = BB_DATA->key_shift;
 
-    log_msg("bb_encrypt() : ADD[%u] SHIFT[%u]\n", key_add, key_shift);
-
     /* allocate space for encrypted data & copy original data */
     *enc_buf = malloc(sizeof(unsigned char) * size);
     if (*enc_buf == NULL)
         return log_error("malloc() failed");
     memcpy(*enc_buf, buf, size);
+
+    /* encryption is disabled */
+    if (key_add == 0 && key_shift == 0)
+        return 0;
+
+    log_msg("bb_encrypt() : ADD[%u] SHIFT[%u]\n", key_add, key_shift);
 
     log_hex_dump(" ", size, *enc_buf);
 
