@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -270,8 +271,7 @@ void log_utime(struct utimbuf *buf)
     log_struct(buf, modtime, 0x%08lx, );
 }
 
-/* This function prints hex dump of "data"
- * Reference: https://review.tizen.org/gerrit/gitweb?p=platform/core/telephony/libtcore.git
+/* Reference: https://review.tizen.org/gerrit/gitweb?p=platform/core/telephony/libtcore.git
  */
 void log_hex_dump(const char *pad, int size, const void *data)
 {
@@ -302,4 +302,13 @@ void log_hex_dump(const char *pad, int size, const void *data)
         }
     }
     log_msg("%s\n", buf);
+}
+
+int log_error(char *str)
+{
+    int ret = -errno;
+    
+    log_msg("    ERROR %s: %s\n", str, strerror(errno));
+    
+    return ret;
 }
