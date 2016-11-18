@@ -44,76 +44,7 @@
 #endif
 
 #include "log.h"
-
-// Report errors to logfile and give -errno to caller
-static int bb_error(char *str)
-{
-    int ret = -errno;
-    
-    log_msg("    ERROR %s: %s\n", str, strerror(errno));
-    
-    return ret;
-}
-
-// decrypts data
-static void bb_decrypt(unsigned char *buf, size_t size)
-{
-    size_t i;
-    unsigned int key_add, key_shift;
-
-    key_add = BB_DATA->key_add;
-    key_shift = BB_DATA->key_shift;
-
-    log_msg("bb_decrypt() : ADD[%u] SHIFT[%u]\n", key_add, key_shift);
-
-    log_hex_dump(" ", size, buf);
-
-    /* decrypt */
-    for (i = 0; i < size; i++)
-    {
-        /* circular left shift */
-        buf[i] = (buf[i] << key_shift) | (buf[i] >> (sizeof(unsigned char) * 8 - key_shift));
-
-        /* subtract */
-        buf[i] = buf[i] - key_add;
-    }
-
-    log_hex_dump(" ", size, buf);
-}
-
-// encrypts data
-static int bb_encrypt(const unsigned char *buf, size_t size, unsigned char **enc_buf)
-{
-    size_t i;
-    unsigned int key_add, key_shift;
-
-    key_add = BB_DATA->key_add;
-    key_shift = BB_DATA->key_shift;
-
-    log_msg("bb_encrypt() : ADD[%u] SHIFT[%u]\n", key_add, key_shift);
-
-    /* allocate space for encrypted data & copy original data */
-    *enc_buf = malloc(sizeof(unsigned char) * size);
-    if (*enc_buf == NULL)
-        return bb_error("malloc() failed");
-    memcpy(*enc_buf, buf, size);
-
-    log_hex_dump(" ", size, *enc_buf);
-
-    /* encrypt */
-    for (i = 0; i < size; i++)
-    {
-        /* add */
-        (*enc_buf)[i] = (*enc_buf)[i] + key_add;
-
-        /* circular right shift */
-        (*enc_buf)[i] = ((*enc_buf)[i] >> key_shift) | ((*enc_buf)[i] << (sizeof(unsigned char) * 8 - key_shift));
-    }
-
-    log_hex_dump(" ", size, *enc_buf);
-
-    return 0;
-}
+#include "encryption.h"
 
 // Check whether the given user is permitted to perform the given operation on the given 
 
@@ -154,7 +85,7 @@ int bb_getattr(const char *path, struct stat *statbuf)
     
     retstat = lstat(fpath, statbuf);
     if (retstat != 0)
-	retstat = bb_error("bb_getattr lstat");
+	retstat = log_error("bb_getattr lstat");
     
     log_stat(statbuf);
     
@@ -184,7 +115,7 @@ int bb_readlink(const char *path, char *link, size_t size)
     
     retstat = readlink(fpath, link, size - 1);
     if (retstat < 0)
-	retstat = bb_error("bb_readlink readlink");
+	retstat = log_error("bb_readlink readlink");
     else  {
 	link[retstat] = '\0';
 	retstat = 0;
@@ -213,21 +144,21 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
     if (S_ISREG(mode)) {
         retstat = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode);
 	if (retstat < 0)
-	    retstat = bb_error("bb_mknod open");
+	    retstat = log_error("bb_mknod open");
         else {
             retstat = close(retstat);
 	    if (retstat < 0)
-		retstat = bb_error("bb_mknod close");
+		retstat = log_error("bb_mknod close");
 	}
     } else
 	if (S_ISFIFO(mode)) {
 	    retstat = mkfifo(fpath, mode);
 	    if (retstat < 0)
-		retstat = bb_error("bb_mknod mkfifo");
+		retstat = log_error("bb_mknod mkfifo");
 	} else {
 	    retstat = mknod(fpath, mode, dev);
 	    if (retstat < 0)
-		retstat = bb_error("bb_mknod mknod");
+		retstat = log_error("bb_mknod mknod");
 	}
     
     return retstat;
@@ -245,7 +176,7 @@ int bb_mkdir(const char *path, mode_t mode)
     
     retstat = mkdir(fpath, mode);
     if (retstat < 0)
-	retstat = bb_error("bb_mkdir mkdir");
+	retstat = log_error("bb_mkdir mkdir");
     
     return retstat;
 }
@@ -262,7 +193,7 @@ int bb_unlink(const char *path)
     
     retstat = unlink(fpath);
     if (retstat < 0)
-	retstat = bb_error("bb_unlink unlink");
+	retstat = log_error("bb_unlink unlink");
     
     return retstat;
 }
@@ -279,7 +210,7 @@ int bb_rmdir(const char *path)
     
     retstat = rmdir(fpath);
     if (retstat < 0)
-	retstat = bb_error("bb_rmdir rmdir");
+	retstat = log_error("bb_rmdir rmdir");
     
     return retstat;
 }
@@ -300,7 +231,7 @@ int bb_symlink(const char *path, const char *link)
     
     retstat = symlink(path, flink);
     if (retstat < 0)
-	retstat = bb_error("bb_symlink symlink");
+	retstat = log_error("bb_symlink symlink");
     
     return retstat;
 }
@@ -320,7 +251,7 @@ int bb_rename(const char *path, const char *newpath)
     
     retstat = rename(fpath, fnewpath);
     if (retstat < 0)
-	retstat = bb_error("bb_rename rename");
+	retstat = log_error("bb_rename rename");
     
     return retstat;
 }
@@ -338,7 +269,7 @@ int bb_link(const char *path, const char *newpath)
     
     retstat = link(fpath, fnewpath);
     if (retstat < 0)
-	retstat = bb_error("bb_link link");
+	retstat = log_error("bb_link link");
     
     return retstat;
 }
@@ -355,7 +286,7 @@ int bb_chmod(const char *path, mode_t mode)
     
     retstat = chmod(fpath, mode);
     if (retstat < 0)
-	retstat = bb_error("bb_chmod chmod");
+	retstat = log_error("bb_chmod chmod");
     
     return retstat;
 }
@@ -373,7 +304,7 @@ int bb_chown(const char *path, uid_t uid, gid_t gid)
     
     retstat = chown(fpath, uid, gid);
     if (retstat < 0)
-	retstat = bb_error("bb_chown chown");
+	retstat = log_error("bb_chown chown");
     
     return retstat;
 }
@@ -390,7 +321,7 @@ int bb_truncate(const char *path, off_t newsize)
     
     retstat = truncate(fpath, newsize);
     if (retstat < 0)
-	bb_error("bb_truncate truncate");
+	log_error("bb_truncate truncate");
     
     return retstat;
 }
@@ -408,7 +339,7 @@ int bb_utime(const char *path, struct utimbuf *ubuf)
     
     retstat = utime(fpath, ubuf);
     if (retstat < 0)
-	retstat = bb_error("bb_utime utime");
+	retstat = log_error("bb_utime utime");
     
     return retstat;
 }
@@ -435,7 +366,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     
     fd = open(fpath, fi->flags);
     if (fd < 0)
-	retstat = bb_error("bb_open open");
+	retstat = log_error("bb_open open");
     
     fi->fh = fd;
     log_fi(fi);
@@ -470,9 +401,9 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     
     retstat = pread(fi->fh, buf, size, offset);
     if (retstat < 0)
-	retstat = bb_error("bb_read read");
+	retstat = log_error("bb_read read");
     else if (retstat != 0) // decrypt if not EOF
-	bb_decrypt((unsigned char *)buf, (size_t)retstat); // pread() will return bytes read
+	enc_decrypt_data((unsigned char *)buf, (size_t)retstat); // pread() will return bytes read
     
     return retstat;
 }
@@ -500,7 +431,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     log_fi(fi);
     
 	// encrypt data
-    retstat = bb_encrypt((const unsigned char *)buf, size, &enc_buf);
+    retstat = enc_encrypt_data((const unsigned char *)buf, size, &enc_buf);
 	// if successful, pwrite()
     if (retstat == 0) {
 	retstat = pwrite(fi->fh, enc_buf, size, offset);
@@ -508,7 +439,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 	}
     
     if (retstat < 0)
-	retstat = bb_error("bb_write");
+	retstat = log_error("bb_write");
     
     return retstat;
 }
@@ -532,7 +463,7 @@ int bb_statfs(const char *path, struct statvfs *statv)
     // get stats for underlying filesystem
     retstat = statvfs(fpath, statv);
     if (retstat < 0)
-	retstat = bb_error("bb_statfs statvfs");
+	retstat = log_error("bb_statfs statvfs");
     
     log_statvfs(statv);
     
@@ -626,7 +557,7 @@ int bb_fsync(const char *path, int datasync, struct fuse_file_info *fi)
 	retstat = fsync(fi->fh);
     
     if (retstat < 0)
-	bb_error("bb_fsync fsync");
+	log_error("bb_fsync fsync");
     
     return retstat;
 }
@@ -644,7 +575,7 @@ int bb_setxattr(const char *path, const char *name, const char *value, size_t si
     
     retstat = lsetxattr(fpath, name, value, size, flags);
     if (retstat < 0)
-	retstat = bb_error("bb_setxattr lsetxattr");
+	retstat = log_error("bb_setxattr lsetxattr");
     
     return retstat;
 }
@@ -661,7 +592,7 @@ int bb_getxattr(const char *path, const char *name, char *value, size_t size)
     
     retstat = lgetxattr(fpath, name, value, size);
     if (retstat < 0)
-	retstat = bb_error("bb_getxattr lgetxattr");
+	retstat = log_error("bb_getxattr lgetxattr");
     else
 	log_msg("    value = \"%s\"\n", value);
     
@@ -682,7 +613,7 @@ int bb_listxattr(const char *path, char *list, size_t size)
     
     retstat = llistxattr(fpath, list, size);
     if (retstat < 0)
-	retstat = bb_error("bb_listxattr llistxattr");
+	retstat = log_error("bb_listxattr llistxattr");
     
     log_msg("    returned attributes (length %d):\n", retstat);
     for (ptr = list; ptr < list + retstat; ptr += strlen(ptr)+1)
@@ -703,7 +634,7 @@ int bb_removexattr(const char *path, const char *name)
     
     retstat = lremovexattr(fpath, name);
     if (retstat < 0)
-	retstat = bb_error("bb_removexattr lrmovexattr");
+	retstat = log_error("bb_removexattr lrmovexattr");
     
     return retstat;
 }
@@ -728,7 +659,7 @@ int bb_opendir(const char *path, struct fuse_file_info *fi)
     
     dp = opendir(fpath);
     if (dp == NULL)
-	retstat = bb_error("bb_opendir opendir");
+	retstat = log_error("bb_opendir opendir");
     
     fi->fh = (intptr_t) dp;
     
@@ -776,7 +707,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
     // which I can get an error from readdir()
     de = readdir(dp);
     if (de == 0) {
-	retstat = bb_error("bb_readdir readdir");
+	retstat = log_error("bb_readdir readdir");
 	return retstat;
     }
 
@@ -896,7 +827,7 @@ int bb_access(const char *path, int mask)
     retstat = access(fpath, mask);
     
     if (retstat < 0)
-	retstat = bb_error("bb_access access");
+	retstat = log_error("bb_access access");
     
     return retstat;
 }
@@ -925,7 +856,7 @@ int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     
     fd = creat(fpath, mode);
     if (fd < 0)
-	retstat = bb_error("bb_create creat");
+	retstat = log_error("bb_create creat");
     
     fi->fh = fd;
     
@@ -956,7 +887,7 @@ int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
     
     retstat = ftruncate(fi->fh, offset);
     if (retstat < 0)
-	retstat = bb_error("bb_ftruncate ftruncate");
+	retstat = log_error("bb_ftruncate ftruncate");
     
     return retstat;
 }
@@ -990,7 +921,7 @@ int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *f
     
     retstat = fstat(fi->fh, statbuf);
     if (retstat < 0)
-	retstat = bb_error("bb_fgetattr fstat");
+	retstat = log_error("bb_fgetattr fstat");
     
     log_stat(statbuf);
     
@@ -1050,7 +981,6 @@ void bb_usage()
 int main(int argc, char *argv[])
 {
     int fuse_stat;
-    FILE *fp_conf;
     struct bb_state *bb_data;
 
     // bbfs doesn't do any access checking on its own (the comment
@@ -1089,24 +1019,7 @@ int main(int argc, char *argv[])
     argc--;
     
     bb_data->logfile = log_open();
-    fp_conf = fopen("ee516.conf", "r");
-    if (fp_conf != NULL) {
-		int matched;
-		// read keys
-		matched = fscanf(fp_conf, "%u %u", &bb_data->key_add, &bb_data->key_shift);
-		if (matched != 2) {
-			// initialize to zero if unable to scan
-			fprintf(stderr, "unable to scan encryption keys\n");
-			bb_data->key_add = 0;
-			bb_data->key_shift = 0;
-		}
-		fclose(fp_conf);
-    } else {
-		// initialize to zero if unable to open conf
-		fprintf(stderr, "unable to read encryption keys\n");
-		bb_data->key_add = 0;
-		bb_data->key_shift = 0;
-    }
+    enc_get_keys(&bb_data->key_add, &bb_data->key_shift);
     
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
