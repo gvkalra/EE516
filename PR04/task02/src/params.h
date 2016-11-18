@@ -28,6 +28,7 @@ struct bb_state {
     char *rootdir;
     unsigned int key_add;
     unsigned int key_shift;
+    unsigned int buf_policy;
 };
 #define BB_DATA ((struct bb_state *) fuse_get_context()->private_data)
 

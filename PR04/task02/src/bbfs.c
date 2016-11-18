@@ -45,6 +45,7 @@
 
 #include "log.h"
 #include "encryption.h"
+#include "buffer.h"
 
 // Check whether the given user is permitted to perform the given operation on the given 
 
@@ -1020,6 +1021,7 @@ int main(int argc, char *argv[])
     
     bb_data->logfile = log_open();
     enc_get_keys(&bb_data->key_add, &bb_data->key_shift);
+    buf_get_policy(&bb_data->buf_policy);
     
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
