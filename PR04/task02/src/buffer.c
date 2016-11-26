@@ -4,6 +4,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 /* Chunks
  * Each chunk_array[] element has 4KB data
@@ -235,7 +236,15 @@ struct eviction_node *_evict_cached_node
 
     // LRU
     if (evic_policy == 2) {
+        log_msg("LRU");
         _flush_node(evic_queue.rear);
+        // increase occupancy count
+        // it will lead to an invalid state if
+        // this node is not used!!
+        // that means after invoking this function,
+        // the node MUST be utilized for either read or write!
+        // otherwise the count will go out of sync
+        evic_queue.occupied_chunks += 1;
         return evic_queue.rear;
     }
 
@@ -333,14 +342,17 @@ ssize_t buf_read
 
     // expand queue if possible
     if (is_evic_queue_expandable()) {
+        log_msg("Expandable Cache\n");
         node = create_new_node(fd, offset);
     }
     // buffer full, evict
     else if (is_evic_queue_full()) {
+        log_msg("Eviction Cache\n");
         node = _evict_cached_node(); //returns evicted node
     }
     // buffer available, reuse
     else {
+        log_msg("Re-usable Cache\n");
         node = _find_usable_node();
     }
 
@@ -368,6 +380,7 @@ ssize_t buf_read
     node->fd = fd;
     node->offset = offset;
     memcpy(chunk_array[node->chunk_index].data, buf, count);
+    return count;
 #undef RETRY_COUNT
 }
 

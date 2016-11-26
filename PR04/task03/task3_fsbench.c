@@ -50,7 +50,7 @@ void file_create(){
 	/* Create phase */
 	for (i = 0; i < NUMFILES; i++) {
 		snprintf(filename, 128, "%s/file-%d", dirname,  i);				// create file path and file name
-		fd = open(filename, O_WRONLY | O_CREAT | O_EXCL , S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);	// file open 
+		fd = open(filename, O_RDWR | O_CREAT | O_EXCL , S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);	// file open 
 		if (fd == -1) {
 			perror("open");
 			exit(1);
@@ -98,7 +98,7 @@ void file_write_sequential(){
 	
 	for (i = 0; i < NUMFILES; i++) {
 		snprintf(filename, 128, "%s/file-%d", dirname,  i);
-		fd = open(filename, O_WRONLY |  O_EXCL, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+		fd = open(filename, O_RDWR |  O_EXCL, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 		// O_DIRECT flag is used to bypass buffer cache				
 
 		if (fd == -1) {
@@ -132,8 +132,8 @@ void file_read_sequential(){
 	
 	for (i = 0; i < NUMFILES; i++) {
 		snprintf(filename, 128, "%s/file-%d", dirname, i);
-		fd = open(filename, O_RDONLY);
-		//fd = open(filename, O_RDONLY);
+		fd = open(filename, O_RDWR);
+		//fd = open(filename, O_RDWR);
 
 		if (fd == -1) {
 			perror("open");
@@ -177,7 +177,7 @@ void file_write_random(){
 	
 	for (i = 0; i < NUMFILES; i++) {
 		snprintf(filename, 128, "%s/file-%d", dirname,  i);
-		fd = open(filename, O_WRONLY | O_EXCL , S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH); //O_WRONLY | O_EXCL 
+		fd = open(filename, O_RDWR | O_EXCL , S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH); //O_RDWR | O_EXCL 
 		// O_DIRECT flag is used to bypass buffer cache	
 		
 		if (fd == -1) {
@@ -216,7 +216,7 @@ void file_read_random(){
 	
 	for (i = 0; i < NUMFILES; i++) {
 		snprintf(filename, 128, "%s/file-%d", dirname, i);
-		fd = open(filename, O_RDONLY);  
+		fd = open(filename, O_RDWR);  
 		// O_DIRECT flag is used to bypass buffer cache	
 
 		if (fd == -1) {
