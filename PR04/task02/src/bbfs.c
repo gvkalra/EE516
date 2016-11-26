@@ -399,14 +399,20 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 		path, buf, size, offset, fi);
 	// no need to get fpath on this one, since I work from fi->fh not the path
 	log_fi(fi);
-	
-	retstat = pread(fi->fh, buf, size, offset);
+
+	if (size != 4096) {
+		log_msg("ERROR : size must be 4K");
+		return -1;
+	}
+
+	// read from cache
+	retstat = buf_read(fi->fh, buf, size, offset);
 	if (retstat < 0)
 		retstat = log_error("bb_read read");
 	else if (retstat != 0) // decrypt if not EOF
-		enc_decrypt_data((unsigned char *)buf, (size_t)retstat); // pread() will return bytes read
+		enc_decrypt_data((unsigned char *)buf, (size_t)retstat); // buf_read() will return bytes read
 
-return retstat;
+	return retstat;
 }
 
 /** Write data to an open file
@@ -429,15 +435,20 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 		path, buf, size, offset, fi);
 	// no need to get fpath on this one, since I work from fi->fh not the path
 	log_fi(fi);
-	
+
+	if (size != 4096) {
+		log_msg("ERROR : size must be 4K");
+		return -1;
+	}
+
 	// encrypt data
 	retstat = enc_encrypt_data((const unsigned char *)buf, size, &enc_buf);
-	// if successful, pwrite()
+	// if successful, buf_write()
 	if (retstat == 0) {
-		retstat = pwrite(fi->fh, enc_buf, size, offset);
+		retstat = buf_write(fi->fh, enc_buf, size, offset);
 		free(enc_buf);
 	}
-	
+
 	if (retstat < 0)
 		retstat = log_error("bb_write");
 	
@@ -528,8 +539,8 @@ int bb_release(const char *path, struct fuse_file_info *fi)
 
 	// We need to close the file.  Had we allocated any resources
 	// (buffers etc) we'd need to free them here as well.
-	retstat = close(fi->fh);
-	
+	retstat = buf_close(fi->fh);
+
 	return retstat;
 }
 
