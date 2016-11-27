@@ -67,6 +67,20 @@ static int is_evic_queue_full
     return evic_queue.occupied_chunks == evic_queue.max_chunks;
 }
 
+// print the indexes of cache stored in eviction queue
+static void print_eviction_queue
+(void)
+{
+    struct eviction_node *iter = evic_queue.front;
+
+    log_msg("\n");
+    while (iter != NULL) {
+        log_msg("%u -> ", iter->chunk_index);
+        iter = iter->next;
+    }
+    log_msg("\n");
+}
+
 // allocates a new eviction node and adds it to front of queue
 // chunk_index is monotonically increasing until max_chunks,
 // after which, it is not possible to allocate more nodes.
