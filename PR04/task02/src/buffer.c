@@ -247,6 +247,40 @@ struct eviction_node *_evict_cached_node
         evic_queue.occupied_chunks += 1;
         return evic_queue.rear;
     }
+    // 1, default => random
+    else {
+        unsigned int rand_num;
+        struct eviction_node *node;
+        log_msg("Random Eviction");
+
+        // assume node to evict is front node
+        node = evic_queue.front;
+
+        // find a random number between [0 - 1279]
+        // at this point, it is okay to assume there are no
+        // holes left inside the queue (fd = -1). And each
+        // chunks is referred by one eviction_node.
+        // This is true because at first we expand & utilize the queue
+        // to it's maximum. We call eviction algorithm only when
+        // there is not enough space left to accommodate more requests
+        rand_num = rand() % evic_queue.max_chunks;
+
+        // find node to be evicted
+        while (rand_num > 0) {
+            node = node->next;
+            rand_num -= 1;
+        }
+
+        _flush_node(node);
+        // increase occupancy count
+        // it will lead to an invalid state if
+        // this node is not used!!
+        // that means after invoking this function,
+        // the node MUST be utilized for either read or write!
+        // otherwise the count will go out of sync
+        evic_queue.occupied_chunks += 1;
+        return node;
+    }
 
     return NULL;
 }
@@ -328,9 +362,16 @@ ssize_t buf_read
 (int fd, void *buf, size_t count, off_t offset)
 {
 #define RETRY_COUNT 2
+    unsigned int evic_policy;
     ssize_t bytes_read;
     int retry;
     struct eviction_node *node = NULL;
+
+    evic_policy = BB_DATA->buf_policy;
+    if (evic_policy == 0) { //no buffer
+        log_msg("No  buffer\n");
+        return pread(fd, buf, count, offset);
+    }
 
     // check buffer
     if (_tryread_cache(fd, buf, count, offset) == count) {
@@ -393,7 +434,13 @@ ssize_t buf_read
 ssize_t buf_write
 (int fd, const void *buf, size_t count, off_t offset)
 {
-    return pwrite(fd, buf, count, offset);
+    //unsigned int evic_policy;
+
+    //evic_policy = BB_DATA->buf_policy;
+    //if (evic_policy == 0) { //no buffer
+      //  log_msg("No  buffer\n");
+        return pwrite(fd, buf, count, offset);
+    //}
 }
 
 /*
@@ -403,9 +450,18 @@ ssize_t buf_write
 int buf_close
 (int fd)
 {
+    unsigned int evic_policy;
+
+    evic_policy = BB_DATA->buf_policy;
+    if (evic_policy == 0) { //no buffer
+        log_msg("No  buffer\n");
+        return close(fd);
+    }
+
     // sanity check
     if (fd < 0)
         return -1;
+
     _flush_fd(fd);
     return close(fd);
 }

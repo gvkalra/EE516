@@ -1032,7 +1032,10 @@ int main(int argc, char *argv[])
 	bb_data->logfile = log_open();
 	enc_get_keys(&bb_data->key_add, &bb_data->key_shift);
 	buf_get_policy(&bb_data->buf_policy);
-	
+
+	/* initialize rand() seed */
+	srand(time(NULL));
+
 	// turn over control to fuse
 	fprintf(stderr, "about to call fuse_main\n");
 	fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
