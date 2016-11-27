@@ -406,7 +406,7 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 	}
 
 	// read from cache
-	retstat = buf_read(fi->fh, buf, size, offset);
+	retstat = buf_read(fi->fh, buf, size, offset, fi->flags);
 	if (retstat < 0)
 		retstat = log_error("bb_read read");
 	else if (retstat != 0) // decrypt if not EOF

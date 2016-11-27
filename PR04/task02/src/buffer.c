@@ -21,6 +21,7 @@ struct eviction_node {
 
     int fd; //file descriptor
     off_t offset; //offset
+    int flags; //to find flags with which file was opened
     unsigned int chunk_index; //index of cached data in chunk_array
 };
 struct eviction_queue {
@@ -70,7 +71,7 @@ static int is_evic_queue_full
 // chunk_index is monotonically increasing until max_chunks,
 // after which, it is not possible to allocate more nodes.
 static struct eviction_node *create_new_node
-(int fd, off_t offset)
+(int fd, off_t offset, int flags)
 {
     struct eviction_node *node;
     unsigned int chunk_index;
@@ -94,6 +95,7 @@ static struct eviction_node *create_new_node
     node->next = node->prev = NULL;
     node->fd = fd;
     node->offset = offset;
+    node->flags = flags;
     node->chunk_index = chunk_index;
 
     /* to track number of occupied chunks */
@@ -155,6 +157,12 @@ static void _flush_node
     if (node == NULL || node->fd == -1)
         return;
 
+    if ((node->flags & O_ACCMODE) == O_RDONLY) {
+        //no dirty data is possible since file was opened with
+        // O_RDONLY
+        goto skip_write;
+    }
+
     do {
         // flush to disk
         bytes_written = pwrite(node->fd, chunk_array[node->chunk_index].data,
@@ -169,6 +177,7 @@ static void _flush_node
         retry++;
     } while (retry < RETRY_COUNT);
 
+skip_write:
     // invalidate fd
     // so that it can be reused
     node->fd = -1;
@@ -359,7 +368,7 @@ void buf_get_policy
  *    Read from disk and write to buffer
  */
 ssize_t buf_read
-(int fd, void *buf, size_t count, off_t offset)
+(int fd, void *buf, size_t count, off_t offset, int flags)
 {
 #define RETRY_COUNT 2
     unsigned int evic_policy;
@@ -384,7 +393,7 @@ ssize_t buf_read
     // expand queue if possible
     if (is_evic_queue_expandable()) {
         log_msg("Expandable Cache\n");
-        node = create_new_node(fd, offset);
+        node = create_new_node(fd, offset, flags);
     }
     // buffer full, evict
     else if (is_evic_queue_full()) {
@@ -420,6 +429,7 @@ ssize_t buf_read
     // add to cache
     node->fd = fd;
     node->offset = offset;
+    node->flags = flags;
     memcpy(chunk_array[node->chunk_index].data, buf, count);
     return count;
 #undef RETRY_COUNT
