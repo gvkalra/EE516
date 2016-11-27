@@ -296,6 +296,9 @@ struct eviction_node *_evict_cached_node
         // the node MUST be utilized for either read or write!
         // otherwise the count will go out of sync
         evic_queue.occupied_chunks += 1;
+
+        // move to front (LRU algorithm)
+        _move_node_to_front(evic_queue.rear);
         return evic_queue.rear;
     }
     // 1, default => random
@@ -333,6 +336,7 @@ struct eviction_node *_evict_cached_node
         return node;
     }
 
+    //suppress compiler warning
     return NULL;
 }
 
@@ -361,6 +365,9 @@ struct eviction_node *_find_usable_node
     }
 
     if (found) {
+        unsigned int evic_policy;
+        evic_policy = BB_DATA->buf_policy;
+
         // increase occupancy count
         // it will lead to an invalid state if
         // this node is not used!!
@@ -368,6 +375,12 @@ struct eviction_node *_find_usable_node
         // the node MUST be utilized for either read or write!
         // otherwise the count will go out of sync
         evic_queue.occupied_chunks += 1;
+
+        // LRU?
+        if (evic_policy == 2) {
+            // move to front
+            _move_node_to_front(iter);
+        }
         return iter;
     }
     return NULL;
@@ -451,8 +464,6 @@ ssize_t buf_read
     if (node == NULL) {
         log_msg("ERROR : unable to find usable memory...\n");
         return -1;
-    } else {
-        _move_node_to_front(node); //move to front
     }
 
     do {
@@ -486,10 +497,7 @@ ssize_t buf_read
 ssize_t buf_write
 (int fd, const void *buf, size_t count, off_t offset, int flags)
 {
-#define RETRY_COUNT 2
     unsigned int evic_policy;
-    ssize_t bytes_written;
-    int retry;
     struct eviction_node *node = NULL;
 
     evic_policy = BB_DATA->buf_policy;
@@ -525,30 +533,15 @@ ssize_t buf_write
     if (node == NULL) {
         log_msg("ERROR : unable to find usable memory...\n");
         return -1;
-    } else {
-        _move_node_to_front(node); //move to front
     }
 
-    do {
-        // write to disk
-        bytes_written = pwrite(fd, buf, count, offset);
-
-        // success
-        if (bytes_written == count)
-            break;
-
-        // retry
-        log_msg("ERROR : inconsistent write. Retrying...\n");
-        retry++;
-    } while (retry < RETRY_COUNT);
-
     // add to cache
+    // it will be flushed to disk on eviction
     node->fd = fd;
     node->offset = offset;
     node->flags = flags;
     memcpy(chunk_array[node->chunk_index].data, buf, count);
     return count;
-#undef RETRY_COUNT
 }
 
 /*
