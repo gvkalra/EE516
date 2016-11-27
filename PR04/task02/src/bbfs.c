@@ -445,7 +445,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 	retstat = enc_encrypt_data((const unsigned char *)buf, size, &enc_buf);
 	// if successful, buf_write()
 	if (retstat == 0) {
-		retstat = buf_write(fi->fh, enc_buf, size, offset);
+		retstat = buf_write(fi->fh, enc_buf, size, offset, fi->flags);
 		free(enc_buf);
 	}
 

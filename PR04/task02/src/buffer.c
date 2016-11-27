@@ -220,6 +220,34 @@ static void _flush_fd
     }
 }
 
+// try writing to cache
+// if cache hit, the node will be moved to front of queue
+ssize_t _trywrite_cache
+(int fd, const void *buf, size_t count, off_t offset)
+{
+    struct eviction_node *iter = evic_queue.front;
+    ssize_t bytes_written = -1;
+
+    while (iter != NULL) {
+        // matched
+        if (iter->fd == fd && iter->offset == offset) {
+            // replace data in cache
+            memcpy(chunk_array[iter->chunk_index].data, buf, count);
+            bytes_written = count;
+            break;
+        }
+
+        //next
+        iter = iter->next;
+    }
+
+    // cache hit, move to front
+    if (bytes_written != -1)
+        _move_node_to_front(iter);
+
+    return bytes_written;
+}
+
 // try reading from cache
 // if cache hit, the node will be moved to front of queue
 ssize_t _tryread_cache
@@ -456,15 +484,71 @@ ssize_t buf_read
  *     Write into the buffer
  */
 ssize_t buf_write
-(int fd, const void *buf, size_t count, off_t offset)
+(int fd, const void *buf, size_t count, off_t offset, int flags)
 {
-    //unsigned int evic_policy;
+#define RETRY_COUNT 2
+    unsigned int evic_policy;
+    ssize_t bytes_written;
+    int retry;
+    struct eviction_node *node = NULL;
 
-    //evic_policy = BB_DATA->buf_policy;
-    //if (evic_policy == 0) { //no buffer
-      //  log_msg("No  buffer\n");
+    evic_policy = BB_DATA->buf_policy;
+    if (evic_policy == 0) { //no buffer
+        log_msg("No  buffer\n");
         return pwrite(fd, buf, count, offset);
-    //}
+    }
+
+    // check buffer
+    if (_trywrite_cache(fd, buf, count, offset) == count) {
+        log_msg("Cache HIT\n");
+        return count;
+    }
+
+    log_msg("Cache MISS\n");
+
+    // expand queue if possible
+    if (is_evic_queue_expandable()) {
+        log_msg("Expandable Cache\n");
+        node = create_new_node(fd, offset, flags);
+    }
+    // buffer full, evict
+    else if (is_evic_queue_full()) {
+        log_msg("Eviction Cache\n");
+        node = _evict_cached_node(); //returns evicted node
+    }
+    // buffer available, reuse
+    else {
+        log_msg("Re-usable Cache\n");
+        node = _find_usable_node();
+    }
+
+    if (node == NULL) {
+        log_msg("ERROR : unable to find usable memory...\n");
+        return -1;
+    } else {
+        _move_node_to_front(node); //move to front
+    }
+
+    do {
+        // write to disk
+        bytes_written = pwrite(fd, buf, count, offset);
+
+        // success
+        if (bytes_written == count)
+            break;
+
+        // retry
+        log_msg("ERROR : inconsistent write. Retrying...\n");
+        retry++;
+    } while (retry < RETRY_COUNT);
+
+    // add to cache
+    node->fd = fd;
+    node->offset = offset;
+    node->flags = flags;
+    memcpy(chunk_array[node->chunk_index].data, buf, count);
+    return count;
+#undef RETRY_COUNT
 }
 
 /*
