@@ -50,7 +50,9 @@ void enc_decrypt_data
 
     log_msg("bb_decrypt() : ADD[%u] SHIFT[%u]\n", key_add, key_shift);
 
+#ifdef HEX_DUMP_ENABLE
     log_hex_dump(" ", size, buf);
+#endif
 
     /* decrypt */
     for (i = 0; i < size; i++)
@@ -62,7 +64,9 @@ void enc_decrypt_data
         buf[i] = buf[i] - key_add;
     }
 
+#ifdef HEX_DUMP_ENABLE
     log_hex_dump(" ", size, buf);
+#endif
 }
 
 int enc_encrypt_data
@@ -86,7 +90,9 @@ int enc_encrypt_data
 
     log_msg("bb_encrypt() : ADD[%u] SHIFT[%u]\n", key_add, key_shift);
 
+#ifdef HEX_DUMP_ENABLE
     log_hex_dump(" ", size, *enc_buf);
+#endif
 
     /* encrypt */
     for (i = 0; i < size; i++)
@@ -98,7 +104,9 @@ int enc_encrypt_data
         (*enc_buf)[i] = ((*enc_buf)[i] >> key_shift) | ((*enc_buf)[i] << (sizeof(unsigned char) * 8 - key_shift));
     }
 
+#ifdef HEX_DUMP_ENABLE
     log_hex_dump(" ", size, *enc_buf);
+#endif
 
     return 0;
 }

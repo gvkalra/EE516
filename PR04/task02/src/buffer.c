@@ -64,7 +64,7 @@ static int is_evic_queue_full
      * is no longer expandable. In this case, the only way to
      * cache data is to evict existing data.
      */
-    return evic_queue.occupied_chunks == evic_queue.max_chunks;
+    return evic_queue.occupied_chunks >= evic_queue.max_chunks;
 }
 
 // print the indexes of cache stored in eviction queue
@@ -75,7 +75,7 @@ static void print_eviction_queue
 
     log_msg("\n");
     while (iter != NULL) {
-        log_msg("%u -> ", iter->chunk_index);
+        log_msg("%u [%d] -> ", iter->chunk_index, iter->fd);
         iter = iter->next;
     }
     log_msg("\n");
@@ -207,6 +207,10 @@ static void _flush_fd
 {
     struct eviction_node *iter = evic_queue.front;
 
+#ifdef HEX_DUMP_ENABLE
+    print_eviction_queue();
+#endif
+
     // for all elements in the queue,
     // flush cache of 'fd' in buffer to disk
     while (iter != NULL) {
@@ -300,7 +304,7 @@ struct eviction_node *_evict_cached_node
 
     // LRU
     if (evic_policy == 2) {
-        log_msg("LRU");
+        log_msg("LRU\n");
         _flush_node(evic_queue.rear);
         // increase occupancy count
         // it will lead to an invalid state if
@@ -312,7 +316,7 @@ struct eviction_node *_evict_cached_node
 
         // move to front (LRU algorithm)
         _move_node_to_front(evic_queue.rear);
-        return evic_queue.rear;
+        return evic_queue.front;
     }
     // 1, default => random
     else {
@@ -458,6 +462,9 @@ ssize_t buf_read
 
     log_msg("Cache MISS\n");
 
+    log_msg("\nQueue Status: occupied [%u] total [%u] max [%u]\n",
+        evic_queue.occupied_chunks, evic_queue.total_chunks, evic_queue.max_chunks);
+
     // expand queue if possible
     if (is_evic_queue_expandable()) {
         log_msg("Expandable Cache\n");
@@ -478,6 +485,11 @@ ssize_t buf_read
         log_msg("ERROR : unable to find usable memory...\n");
         return -1;
     }
+
+#ifdef HEX_DUMP_ENABLE
+    print_eviction_queue();
+    log_msg("chunk_index of node: %u\n", node->chunk_index);
+#endif
 
     do {
         // read from disk
@@ -527,6 +539,9 @@ ssize_t buf_write
 
     log_msg("Cache MISS\n");
 
+    log_msg("\nQueue Status: occupied [%u] total [%u] max [%u]\n",
+        evic_queue.occupied_chunks, evic_queue.total_chunks, evic_queue.max_chunks);
+
     // expand queue if possible
     if (is_evic_queue_expandable()) {
         log_msg("Expandable Cache\n");
@@ -548,6 +563,11 @@ ssize_t buf_write
         return -1;
     }
 
+#ifdef HEX_DUMP_ENABLE
+    print_eviction_queue();
+    log_msg("chunk_index of node: %u\n", node->chunk_index);
+#endif
+
     // add to cache
     // it will be flushed to disk on eviction
     node->fd = fd;
@@ -558,24 +578,38 @@ ssize_t buf_write
 }
 
 /*
- * If there are dirty data of corresponding file in the buffer,
- * write them to the disk
+ * According to the assignment, close() / release() is the right
+ * place for flushing the data. However, it is not. In practice,
+ * application doesn't wait for close() to return. As such, in case of
+ * benchmark program, another open() call is issued before release() is completed
+ * This creates a serious bug in implementing cache! So I have implemented flushing
+ * of data in bb_flush()
 */
 int buf_close
 (int fd)
 {
-    unsigned int evic_policy;
+    return close(fd);
+}
 
-    evic_policy = BB_DATA->buf_policy;
-    if (evic_policy == 0) { //no buffer
-        log_msg("No  buffer\n");
-        return close(fd);
-    }
+/*
+ * If there are dirty data of corresponding file in the buffer,
+ * write them to the disk
+*/
+int buf_flush
+(int fd)
+{
+    unsigned int evic_policy;
 
     // sanity check
     if (fd < 0)
         return -1;
 
+    evic_policy = BB_DATA->buf_policy;
+    if (evic_policy == 0) { //no buffer
+        log_msg("No  buffer\n");
+        return 0;
+    }
+
     _flush_fd(fd);
-    return close(fd);
+    return 0;
 }
