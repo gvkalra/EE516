@@ -227,6 +227,8 @@ ssize_t _trywrite_cache
 {
     struct eviction_node *iter = evic_queue.front;
     ssize_t bytes_written = -1;
+    unsigned int evic_policy;
+    evic_policy = BB_DATA->buf_policy;
 
     while (iter != NULL) {
         // matched
@@ -242,8 +244,12 @@ ssize_t _trywrite_cache
     }
 
     // cache hit, move to front
-    if (bytes_written != -1)
-        _move_node_to_front(iter);
+    if (bytes_written != -1) {
+        // LRU?
+        if (evic_policy == 2) { //move to front
+            _move_node_to_front(iter);
+        }
+    }
 
     return bytes_written;
 }
@@ -255,6 +261,8 @@ ssize_t _tryread_cache
 {
     struct eviction_node *iter = evic_queue.front;
     ssize_t bytes_read = -1;
+    unsigned int evic_policy;
+    evic_policy = BB_DATA->buf_policy;
 
     while (iter != NULL) {
         // matched
@@ -270,8 +278,13 @@ ssize_t _tryread_cache
     }
 
     // cache hit, move to front
-    if (bytes_read != -1)
-        _move_node_to_front(iter);
+    if (bytes_read != -1) {
+        // LRU?
+        if (evic_policy == 2) {
+            // move to front
+            _move_node_to_front(iter);
+        }
+    }
 
     return bytes_read;
 }
