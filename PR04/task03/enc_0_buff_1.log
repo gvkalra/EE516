@@ -1,0 +1,60 @@
+File Created .. 
+File Opened Sequential Write .. 
+File Opened Sequential Read .. 
+==============  File System Benchmark Execution Result (Time usec)  ==============
+File Create	 : 	       799
+Sequential Write : 	    161982
+Sequential Read	 : 	    119398
+Random Write	 : 	     97551
+Random Read	 : 	     94231
+File Delete	 : 	      1634
+Total		 : 	    475595
+==================================================================================
+File Created .. 
+File Opened Sequential Write .. 
+File Opened Sequential Read .. 
+==============  File System Benchmark Execution Result (Time usec)  ==============
+File Create	 : 	       718
+Sequential Write : 	    184325
+Sequential Read	 : 	    112576
+Random Write	 : 	     98035
+Random Read	 : 	     99588
+File Delete	 : 	      1566
+Total		 : 	    496808
+==================================================================================
+File Created .. 
+File Opened Sequential Write .. 
+File Opened Sequential Read .. 
+==============  File System Benchmark Execution Result (Time usec)  ==============
+File Create	 : 	       559
+Sequential Write : 	    183049
+Sequential Read	 : 	    114151
+Random Write	 : 	     95869
+Random Read	 : 	     93322
+File Delete	 : 	      1585
+Total		 : 	    488535
+==================================================================================
+File Created .. 
+File Opened Sequential Write .. 
+File Opened Sequential Read .. 
+==============  File System Benchmark Execution Result (Time usec)  ==============
+File Create	 : 	       688
+Sequential Write : 	    176587
+Sequential Read	 : 	    104396
+Random Write	 : 	     96010
+Random Read	 : 	     90707
+File Delete	 : 	      1575
+Total		 : 	    469963
+==================================================================================
+File Created .. 
+File Opened Sequential Write .. 
+File Opened Sequential Read .. 
+==============  File System Benchmark Execution Result (Time usec)  ==============
+File Create	 : 	       748
+Sequential Write : 	    187090
+Sequential Read	 : 	    115416
+Random Write	 : 	     93076
+Random Read	 : 	     90037
+File Delete	 : 	      1587
+Total		 : 	    487954
+==================================================================================
