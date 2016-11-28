@@ -40,6 +40,19 @@ Let one (add, shift) pair be (1, 2) and another be (1, 4)
 
 ## List several encryption methods and analyze them.
 
+To provide strong enough encryption it is necessary to encrypt as much data together in a chaining fashion that includes bit substitutions and transpositions, such that each byte encrypted depends on some of the prior ones. However, doing so would mean that each time we need to decrypt a single byte anywhere in the file, all prior bytes would have to be decrypted as well -- a major performance problem. So, in general, fixed-length block ciphers are used in file system encryption. e.g.
+
+1. DES (too big and slow)
+2. Blowfish (fast, compact, simple)
+
+Cryptfs (A Stackable Vnode Level Encryption File System) uses Blowfish with Cipher Block Chaining (CBC) encryption mode for each block (4-8KB depending on page size) to be encrypted.
+
+References:
+http://www.fsl.cs.sunysb.edu/docs/cryptfs/node2.html#SECTION00022000000000000000
+https://en.wikipedia.org/wiki/Blowfish_(cipher)
+https://en.wikipedia.org/wiki/Data_Encryption_Standard
+https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#CBC
+
 ## Why performances of Linux and FUSE file systems are different?
 A Linux file system (e.g. ext4) runs completely inside a kernel, whereas part of a FUSE file system executes within user-space. This means to perform an operation using Linux file system, the user space process needs to invoke a single system call, which gets handled by the implementation of VFS inside the kernel.
 However, in case of FUSE file system, VFS delegates the handling responsibility to FUSE, which further delegates it to a user-space program. In brief, FUSE introduces an extra layer of context switching between user and kernel space, thus contributing to degraded performance.
