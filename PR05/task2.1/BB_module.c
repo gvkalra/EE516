@@ -35,6 +35,9 @@
 #define LED_OFF 0
 #define LED_ON 1
 
+#define TRUE 1
+#define FALSE 0
+
 static struct {
 	unsigned int gpio; /* GPIO of LED */
 	const char *label; /* GPIO label */
@@ -113,7 +116,7 @@ _bb_module_shutdown(void)
 		// if initialized
 		if (gpio_data[iter].valid == TRUE) {
 			// turn off LED (just in case)
-			gpio_set_value(gpio_data[iter].gpio, LED_OFF);
+			_turn_off_led(gpio_data[iter].gpio);
 			// free
 			gpio_free(gpio_data[iter].gpio);
 		}
@@ -130,19 +133,19 @@ bb_module_init(void)
 
 	/* turn on LED 0 */
 	_turn_on_led(LED0_GPIO);
-	msleep(20); //sleep
+	msleep(1000); //sleep
 
 	/* turn on LED 1 */
 	_turn_on_led(LED1_GPIO);
-	msleep(20); //sleep
+	msleep(1000); //sleep
 
 	/* turn on LED 2 */
 	_turn_on_led(LED2_GPIO);
-	msleep(20); //sleep
+	msleep(1000); //sleep
 
 	/* turn on LED 3 */
 	_turn_on_led(LED3_GPIO);
-	msleep(20); //sleep
+	msleep(1000); //sleep
 
 	return 0;
 }
