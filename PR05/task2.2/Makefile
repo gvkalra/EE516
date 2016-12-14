@@ -5,7 +5,7 @@
 
 MODULES = BB_module          # Your c file name 
 # You should modify this line with your DIR name
-BB_KERNEL = /root/mnt/bb-kernel
+BB_KERNEL = /home/gvkalra/Desktop/bb-kernel
 
 KERNEL_SOURCE = $(BB_KERNEL)/KERNEL
 ARCH = arm
