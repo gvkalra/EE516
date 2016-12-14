@@ -60,19 +60,6 @@ static struct {
 };
 static struct timer_list kern_timer;
 
-/* Given GPIO, turns on LED */
-static void
-_turn_on_led(unsigned int gpio)
-{
-	/* sanity check */
-	if (gpio_is_valid(gpio) == FALSE) {
-		err("Invalid GPIO: [%u]", gpio);
-		return;
-	}
-
-	gpio_set_value(gpio, LED_ON);
-}
-
 /* Given GPIO, turns off LED */
 static void
 _turn_off_led(unsigned int gpio)
@@ -84,6 +71,20 @@ _turn_off_led(unsigned int gpio)
 	}
 
 	gpio_set_value(gpio, LED_OFF);
+}
+
+/* Given GPIO, toggles LED */
+static void
+_toggle_led(unsigned int gpio)
+{
+	/* sanity check */
+	if (gpio_is_valid(gpio) == FALSE) {
+		err("Invalid GPIO: [%u]", gpio);
+		return;
+	}
+
+	/* toggle */
+	gpio_set_value(gpio, !gpio_get_value(gpio));
 }
 
 /* initializes GPIOs for LEDs */
@@ -118,23 +119,19 @@ _bb_module_startup(void)
 
 /* handles TIME_STEP expiration */
 static void
-kern_timer_handler(unsigned long pattern)
+kern_timer_handler(unsigned long arg)
 {
-	// we only support pattern 0 (turn on/off all LEDs from 0 to 4)
-	if (pattern != 0)
-		return;
+	// toggle
+	_toggle_led(LED0_GPIO);
+	_toggle_led(LED1_GPIO);
+	_toggle_led(LED2_GPIO);
+	_toggle_led(LED3_GPIO);
 
-	/* ON */
-	_turn_on_led(LED0_GPIO);
-	_turn_on_led(LED1_GPIO);
-	_turn_on_led(LED2_GPIO);
-	_turn_on_led(LED3_GPIO);
+	// renew timer
+	kern_timer.expires = get_jiffies_64() + TIME_STEP;
 
-	/* OFF */
-	_turn_off_led(LED0_GPIO);
-	_turn_off_led(LED1_GPIO);
-	_turn_off_led(LED2_GPIO);
-	_turn_off_led(LED3_GPIO);
+	// add to kernel
+	add_timer(&kern_timer);
 }
 
 /* register timer */
@@ -149,8 +146,6 @@ _bb_module_register_timer(void)
 
 	// handler
 	kern_timer.function = kern_timer_handler;
-	// we can pass pattern here & handler can execute it
-	// in current case, we only pass 0, meaning turn on/off all LEDs from 0 to 4
 	kern_timer.data = 0;
 
 	// add to kernel
@@ -169,7 +164,7 @@ _bb_module_unregister_timer(void)
 		if (ret == 1) // success => break
 			break;
 		retry_count++; // failure => retry
-	} while (retry_count < MAX_RETRY_COUNT)
+	} while (retry_count < MAX_RETRY_COUNT);
 #undef MAX_RETRY_COUNT
 }
 
