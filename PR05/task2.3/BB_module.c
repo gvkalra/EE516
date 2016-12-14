@@ -33,6 +33,7 @@
 #include <linux/module.h>
 #include <linux/gpio.h>
 #include <linux/timer.h>
+#include <linux/interrupt.h>
 
 #define LED0       0   /* LED 0 */
 #define LED1       1   /* LED 1 */
@@ -68,19 +69,6 @@ static struct {
 static struct timer_list kern_timer;
 static unsigned int irq_number;
 
-/* Given GPIO, turns on LED */
-static void
-_turn_on_led(unsigned int gpio)
-{
-	/* sanity check */
-	if (gpio_is_valid(gpio) == FALSE) {
-		err("Invalid GPIO: [%u]", gpio);
-		return;
-	}
-
-	gpio_set_value(gpio, LED_ON);
-}
-
 /* Given GPIO, turns off LED */
 static void
 _turn_off_led(unsigned int gpio)
@@ -92,6 +80,20 @@ _turn_off_led(unsigned int gpio)
 	}
 
 	gpio_set_value(gpio, LED_OFF);
+}
+
+/* Given GPIO, toggles LED */
+static void
+_toggle_led(unsigned int gpio)
+{
+	/* sanity check */
+	if (gpio_is_valid(gpio) == FALSE) {
+		err("Invalid GPIO: [%u]", gpio);
+		return;
+	}
+
+	/* toggle */
+	gpio_set_value(gpio, !gpio_get_value(gpio));
 }
 
 /* initializes GPIOs for LEDs */
@@ -126,23 +128,19 @@ _bb_module_startup(void)
 
 /* handles TIME_STEP expiration */
 static void
-kern_timer_handler(unsigned long pattern)
+kern_timer_handler(unsigned long arg)
 {
-	// we only support pattern 0 (turn on/off all LEDs from 0 to 4)
-	if (pattern != 0)
-		return;
+	// toggle
+	_toggle_led(LED0_GPIO);
+	_toggle_led(LED1_GPIO);
+	_toggle_led(LED2_GPIO);
+	_toggle_led(LED3_GPIO);
 
-	/* ON */
-	_turn_on_led(LED0_GPIO);
-	_turn_on_led(LED1_GPIO);
-	_turn_on_led(LED2_GPIO);
-	_turn_on_led(LED3_GPIO);
+	// renew timer
+	kern_timer.expires = get_jiffies_64() + TIME_STEP;
 
-	/* OFF */
-	_turn_off_led(LED0_GPIO);
-	_turn_off_led(LED1_GPIO);
-	_turn_off_led(LED2_GPIO);
-	_turn_off_led(LED3_GPIO);
+	// add to kernel
+	add_timer(&kern_timer);
 }
 
 /* register timer */
@@ -157,8 +155,6 @@ _bb_module_register_timer(void)
 
 	// handler
 	kern_timer.function = kern_timer_handler;
-	// we can pass pattern here & handler can execute it
-	// in current case, we only pass 0, meaning turn on/off all LEDs from 0 to 4
 	kern_timer.data = 0;
 
 	// add to kernel
@@ -170,14 +166,23 @@ static void
 _bb_module_unregister_timer(void)
 {
 #define MAX_RETRY_COUNT 5
-	int ret, retry_count = 0;
+	int ret, retry_count = 0, iter;
 
 	do {
 		ret = del_timer(&kern_timer);
 		if (ret == 1) // success => break
 			break;
 		retry_count++; // failure => retry
-	} while (retry_count < MAX_RETRY_COUNT)
+	} while (retry_count < MAX_RETRY_COUNT);
+
+	/* turn off all LEDs (if on) */
+	for (iter = LED0; iter < NUM_LED; iter++) {
+		// if on
+		if (!!gpio_get_value(gpio_data[iter].gpio)) {
+			// turn off LED
+			_turn_off_led(gpio_data[iter].gpio);
+		}
+	}
 #undef MAX_RETRY_COUNT
 }
 
@@ -197,7 +202,7 @@ static irq_handler_t button_irq_handler
 		blinking = FALSE;
 	}
 
-	return IRQ_HANDLED;
+	return (irq_handler_t)IRQ_HANDLED;
 }
 
 /* registers IRQ for handling button */
@@ -219,8 +224,8 @@ _bb_module_register_button(void)
 			info("IRQ Number: [%u]", irq_number);
 
 			// register interrupt
-			ret = request_irq(irq_number, button_irq_handler, IRQF_TRIGGER_RISING,
-							  "button_irq_handler", NULL);
+			ret = request_irq(irq_number, (irq_handler_t)button_irq_handler,
+							  IRQF_TRIGGER_RISING, "button_irq_handler", NULL);
 			if (ret < 0) {
 				err("request_irq() failed");
 				gpio_free(BUTTON_GPIO);
