@@ -69,6 +69,19 @@ static struct {
 static struct timer_list kern_timer;
 static unsigned int irq_number;
 
+/* Given GPIO, turns on LED */
+static void
+_turn_on_led(unsigned int gpio)
+{
+	/* sanity check */
+	if (gpio_is_valid(gpio) == FALSE) {
+		err("Invalid GPIO: [%u]", gpio);
+		return;
+	}
+
+	gpio_set_value(gpio, LED_ON);
+}
+
 /* Given GPIO, turns off LED */
 static void
 _turn_off_led(unsigned int gpio)
@@ -166,7 +179,7 @@ static void
 _bb_module_unregister_timer(void)
 {
 #define MAX_RETRY_COUNT 5
-	int ret, retry_count = 0, iter;
+	int ret, retry_count = 0;
 
 	do {
 		ret = del_timer(&kern_timer);
@@ -174,15 +187,6 @@ _bb_module_unregister_timer(void)
 			break;
 		retry_count++; // failure => retry
 	} while (retry_count < MAX_RETRY_COUNT);
-
-	/* turn off all LEDs (if on) */
-	for (iter = LED0; iter < NUM_LED; iter++) {
-		// if on
-		if (!!gpio_get_value(gpio_data[iter].gpio)) {
-			// turn off LED
-			_turn_off_led(gpio_data[iter].gpio);
-		}
-	}
 #undef MAX_RETRY_COUNT
 }
 
@@ -190,15 +194,33 @@ static irq_handler_t button_irq_handler
 (unsigned int irq, void *dev_id, struct pt_regs *regs)
 {
 	static bool blinking = FALSE;
+	int iter;
 
 	// if not blinking, start blinking
 	if (blinking == FALSE) {
+		/* turn on all LEDs (for quick response) */
+		for (iter = LED0; iter < NUM_LED; iter++) {
+			// turn on LED
+			_turn_on_led(gpio_data[iter].gpio);
+		}
+
+		/* start pattern */
 		_bb_module_register_timer();
 		blinking = TRUE;
 	}
 	// blinking, stop blinking
 	else {
 		_bb_module_unregister_timer();
+
+		/* turn off all LEDs (if still on) */
+		for (iter = LED0; iter < NUM_LED; iter++) {
+			// if on
+			if (!!gpio_get_value(gpio_data[iter].gpio)) {
+				// turn off LED
+				_turn_off_led(gpio_data[iter].gpio);
+			}
+		}
+
 		blinking = FALSE;
 	}
 
