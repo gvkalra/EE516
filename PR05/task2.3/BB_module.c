@@ -1,6 +1,7 @@
-/* Register and Unregister Timer Interrupt:
- *     Blink LEDs with 1HZ Timer Interrupt
+/* Button Control with Kernel Interrupt Handler:
+ *     Blink LEDs with Button Interrupt
  *     We can implement our own blinking pattern
+ *     Process: Button Push -> Start Blinking -> Stop Blinking
  * LED   |   GPIO Signal   |    GPIO Number
  * ------|-----------------|---------------
  * USR0  |   GPIO1_21      |    53
@@ -8,19 +9,23 @@
  * USR2  |   GPIO1_23      |    55
  * USR3  |   GPIO1_24      |    56
  *
- * Functions of interest:
- * init_timer()
- * add_timer()
- * del_timer()
- * get_jiffies_64()
+ * S2 Button => 72 (GPIO Number)
  *
- * Structures of interest:
- * struct timer_list {
- *    ...
- *    unsigned long expires; // time of expiration in jiffy (1 jiffy = 1 tick OR 1/HZ sec)
- *    void (*function)(unsigned long); // timer handler
- *    unsigned long data; // passed as the argument when function is called
- *    ...
+ * Functions of interest:
+ * gpio_is_valid()
+ * gpio_request()
+ * gpio_direction_input()
+ * gpio_direction_output()
+ * gpio_set_value()
+ * gpio_free()
+ * gpio_to_irq()
+ * request_irq()
+ * free_irq()
+ *
+ * Edge Detection:
+ *    IRQF_TRIGGER_RISING : Detect Rising Edge
+ *    IRQF_TRIGGER_FALLING : Detect Falling Edge
+ *    IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING : Detect Both Edge
  */
 
 #include "utils.h"
@@ -39,6 +44,8 @@
 #define LED1_GPIO  54  /* GPIO of LED 1 */
 #define LED2_GPIO  55  /* GPIO of LED 2 */
 #define LED3_GPIO  56  /* GPIO of LED 3 */
+
+#define BUTTON_GPIO 72 /* GPIO of button */
 
 #define LED_OFF 0
 #define LED_ON 1
@@ -59,6 +66,7 @@ static struct {
 		[LED3] = {LED3_GPIO, "LED3_GPIO", FALSE},
 };
 static struct timer_list kern_timer;
+static unsigned int irq_number;
 
 /* Given GPIO, turns on LED */
 static void
@@ -162,15 +170,86 @@ static void
 _bb_module_unregister_timer(void)
 {
 #define MAX_RETRY_COUNT 5
-    int ret, retry_count = 0;
+	int ret, retry_count = 0;
 
-    do {
+	do {
 		ret = del_timer(&kern_timer);
 		if (ret == 1) // success => break
 			break;
 		retry_count++; // failure => retry
 	} while (retry_count < MAX_RETRY_COUNT)
 #undef MAX_RETRY_COUNT
+}
+
+static irq_handler_t button_irq_handler
+(unsigned int irq, void *dev_id, struct pt_regs *regs)
+{
+	static bool blinking = FALSE;
+
+	// if not blinking, start blinking
+	if (blinking == FALSE) {
+		_bb_module_register_timer();
+		blinking = TRUE;
+	}
+	// blinking, stop blinking
+	else {
+		_bb_module_unregister_timer();
+		blinking = FALSE;
+	}
+
+	return IRQ_HANDLED;
+}
+
+/* registers IRQ for handling button */
+static int
+_bb_module_register_button(void)
+{
+	int ret;
+
+	// request
+	ret = gpio_request(BUTTON_GPIO, "BUTTON_GPIO");
+	// success?
+	if (!ret) {
+		// set as input
+		ret = gpio_direction_input(BUTTON_GPIO);
+		// success ?
+		if (!ret) {
+			// convert to IRQ number
+			irq_number = gpio_to_irq(BUTTON_GPIO);
+			info("IRQ Number: [%u]", irq_number);
+
+			// register interrupt
+			ret = request_irq(irq_number, button_irq_handler, IRQF_TRIGGER_RISING,
+							  "button_irq_handler", NULL);
+			if (ret < 0) {
+				err("request_irq() failed");
+				gpio_free(BUTTON_GPIO);
+			} else {
+				return 0; // all success
+			}
+		} else { // failure : free GPIO
+			err("gpio_direction_output() failed for : [%u]", BUTTON_GPIO);
+			gpio_free(BUTTON_GPIO);
+		}
+	} else {
+		err("gpio_request() failed for : [%u]", BUTTON_GPIO);
+	}
+
+	return -1;
+}
+
+/* cleans up IRQ registered for handling button */
+static void
+_bb_module_unregister_button(void)
+{
+	/* disable timer if active */
+	_bb_module_unregister_timer();
+
+	/* free IRQ line */
+	free_irq(irq_number, NULL);
+
+	/* free GPIO */
+	gpio_free(BUTTON_GPIO);
 }
 
 /* de-initializes GPIOs for LEDs */
@@ -193,14 +272,19 @@ _bb_module_shutdown(void)
 
 static int __init
 bb_module_init(void)
-{	
+{
+	int ret;
 	dbg("");
+
+	/* register button */
+	ret = _bb_module_register_button();
+	if (ret < 0) {
+		err("Failed to setup button IRQ");
+		return -1;
+	}
 
 	/* startup */
 	_bb_module_startup();
-
-	/* register timer */
-	_bb_module_register_timer();
 
 	return 0;
 }
@@ -210,8 +294,8 @@ bb_module_exit(void)
 {
 	dbg("");
 
-	/* un-register timer */
-	_bb_module_unregister_timer();
+	/* un-register button */
+	_bb_module_unregister_button();
 
 	/* shutdown (it will turn off all LEDs) */
 	_bb_module_shutdown();
