@@ -25,6 +25,7 @@
 #include <linux/gpio.h>
 #include <linux/timer.h>
 #include <linux/interrupt.h>
+#include <linux/ktime.h>
 
 #define LED0       0   /* LED 0 */
 #define LED1       1   /* LED 1 */
@@ -62,6 +63,9 @@ static struct timer_list kern_timer;
 static unsigned int irq_number;
 static unsigned int counter;
 
+static spinlock_t gpio_press_time_lock;
+static ktime_t gpio_press_time;
+
 /* it must be from 0 to 15 (we have 4 LEDs) */
 static unsigned int
 _get_counter_value(void)
@@ -86,10 +90,11 @@ _increment_counter_value(void)
 	return counter;
 }
 
-static void
+static unsigned int
 _reset_counter_value(void)
 {
 	counter = 0;
+	return counter;
 }
 
 /* Given GPIO, turns on LED */
@@ -255,20 +260,19 @@ _bb_module_unregister_timer(void)
 #undef MAX_RETRY_COUNT
 }
 
-static irq_handler_t button_irq_handler
-(unsigned int irq, void *dev_id, struct pt_regs *regs)
+static void
+_handle_counter_pattern(bool reset)
 {
 	unsigned int val;
 	static bool timer_registered = FALSE;
 
-	/* increment counter */
-	val = _increment_counter_value();
+	val = reset ? _reset_counter_value() : _increment_counter_value();
 
 	/* for quick response */
 	_turn_on_led_pattern(val);
 
 	/* start blinking pattern */
-	if (timer_registered == FALSE) {
+	if (timer_registered == FALSE && val != 0) {
 		_bb_module_register_timer();
 		timer_registered = TRUE;
 	}
@@ -282,7 +286,51 @@ static irq_handler_t button_irq_handler
 		_bb_module_unregister_timer();
 		_bb_module_register_timer();
 	}
+}
 
+static irq_handler_t button_irq_handler
+(unsigned int irq, void *dev_id, struct pt_regs *regs)
+{
+	uint8_t value;
+	unsigned int duration;
+
+	spin_lock(&gpio_press_time_lock);
+	value = gpio_get_value(BUTTON_GPIO);
+
+	if (value == 1) {
+		// If no time has elapsed, we probably already cleared on a FALLING
+		// interrupt. So finish the handler.
+		if (ktime_to_ms(gpio_press_time) == 0) {
+			goto finished;
+		}
+
+		duration = ktime_to_ms(ktime_sub(ktime_get(), gpio_press_time));
+
+		if (duration == 0) {
+			goto finished;
+		}
+
+		gpio_press_time = ktime_set(0, 0);
+		info("Detected button release, duration of %u", duration);
+
+		if (duration >= 1000) { //1sec => reset
+			_handle_counter_pattern(TRUE);
+		} else {
+			_handle_counter_pattern(FALSE);
+		}
+	} else {
+		// If a time is already set, we already received a RISING interrupt.
+		// So we can finish the handler.
+		if (ktime_to_ms(gpio_press_time) > 0) {
+			goto finished;
+		}
+
+		info("Detected button press");
+		gpio_press_time = ktime_get();
+	}
+
+finished:
+	spin_unlock(&gpio_press_time_lock);
 	return (irq_handler_t)IRQ_HANDLED;
 }
 
@@ -306,7 +354,8 @@ _bb_module_register_button(void)
 
 			// register interrupt
 			ret = request_irq(irq_number, (irq_handler_t)button_irq_handler,
-							  IRQF_TRIGGER_RISING, "button_irq_handler", NULL);
+							  IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+							  "button_irq_handler", NULL);
 			if (ret < 0) {
 				err("request_irq() failed");
 				gpio_free(BUTTON_GPIO);
@@ -361,6 +410,9 @@ bb_module_init(void)
 {
 	int ret;
 	dbg("");
+
+	/* button press duration timer */
+	gpio_press_time = ktime_set(0, 0);
 
 	/* register button */
 	ret = _bb_module_register_button();
