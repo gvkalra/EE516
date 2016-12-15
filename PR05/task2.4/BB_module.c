@@ -63,7 +63,7 @@ static unsigned int counter;
 
 /* it must be from 0 to 15 (we have 4 LEDs) */
 static unsigned int
-_get_counter_value()
+_get_counter_value(void)
 {
 	return counter;
 }
@@ -72,7 +72,7 @@ _get_counter_value()
  * new value must be within 0 to 15 (we have 4 LEDs)
  */
 static unsigned int
-_increment_counter_value()
+_increment_counter_value(void)
 {
 	/* reset */
 	if (counter == 15) {
@@ -85,6 +85,12 @@ _increment_counter_value()
 	return counter;
 }
 
+static void
+_reset_counter_value(void)
+{
+	counter = 0;
+}
+
 /* Given GPIO, turns on LED */
 static void
 _turn_on_led(unsigned int gpio)
@@ -95,7 +101,8 @@ _turn_on_led(unsigned int gpio)
 		return;
 	}
 
-	gpio_set_value(gpio, LED_ON);
+	if (gpio_get_value(gpio) == LED_OFF)
+		gpio_set_value(gpio, LED_ON);
 }
 
 /* Given GPIO, turns off LED */
@@ -108,7 +115,8 @@ _turn_off_led(unsigned int gpio)
 		return;
 	}
 
-	gpio_set_value(gpio, LED_OFF);
+	if (gpio_get_value(gpio) == LED_ON)
+		gpio_set_value(gpio, LED_OFF);
 }
 
 /* Given GPIO, toggles LED */
@@ -123,6 +131,39 @@ _toggle_led(unsigned int gpio)
 
 	/* toggle */
 	gpio_set_value(gpio, !gpio_get_value(gpio));
+}
+
+/* it turns on LED specified by bit-pattern in val */
+static void
+_turn_on_led_pattern(unsigned int val)
+{
+	// LED0
+	if (val & (1 << 0)) {
+		_turn_on_led(gpio_data[LED0].gpio);
+	} else {
+		_turn_off_led(gpio_data[LED0].gpio);
+	}
+
+	// LED1
+	if (val & (1 << 1)) {
+		_turn_on_led(gpio_data[LED1].gpio);
+	} else {
+		_turn_off_led(gpio_data[LED1].gpio);
+	}
+
+	// LED2
+	if (val & (1 << 2)) {
+		_turn_on_led(gpio_data[LED2].gpio);
+	} else {
+		_turn_off_led(gpio_data[LED2].gpio);
+	}
+
+	// LED3
+	if (val & (1 << 3)) {
+		_turn_on_led(gpio_data[LED3].gpio);
+	} else {
+		_turn_off_led(gpio_data[LED3].gpio);
+	}
 }
 
 /* initializes GPIOs for LEDs */
@@ -159,11 +200,17 @@ _bb_module_startup(void)
 static void
 kern_timer_handler(unsigned long arg)
 {
+	unsigned int val = _get_counter_value();
+
 	// toggle
-	_toggle_led(LED0_GPIO);
-	_toggle_led(LED1_GPIO);
-	_toggle_led(LED2_GPIO);
-	_toggle_led(LED3_GPIO);
+	if (val & (1 << 0))
+		_toggle_led(gpio_data[LED0].gpio);
+	if (val & (1 << 1))
+		_toggle_led(gpio_data[LED1].gpio);
+	if (val & (1 << 2))
+		_toggle_led(gpio_data[LED2].gpio);
+	if (val & (1 << 3))
+		_toggle_led(gpio_data[LED3].gpio);
 
 	// renew timer
 	kern_timer.expires = get_jiffies_64() + TIME_STEP;
@@ -209,35 +256,29 @@ _bb_module_unregister_timer(void)
 static irq_handler_t button_irq_handler
 (unsigned int irq, void *dev_id, struct pt_regs *regs)
 {
-	static bool blinking = FALSE;
-	int iter;
+	unsigned int val;
+	static bool timer_registered = FALSE;
 
-	// if not blinking, start blinking
-	if (blinking == FALSE) {
-		/* turn on all LEDs (for quick response) */
-		for (iter = LED0; iter < NUM_LED; iter++) {
-			// turn on LED
-			_turn_on_led(gpio_data[iter].gpio);
-		}
+	/* increment counter */
+	val = _increment_counter_value();
 
-		/* start pattern */
+	/* for quick response */
+	_turn_on_led_pattern(val);
+
+	/* start blinking pattern */
+	if (timer_registered == FALSE) {
 		_bb_module_register_timer();
-		blinking = TRUE;
+		timer_registered = TRUE;
 	}
-	// blinking, stop blinking
+	/* value has been reset (remove timer since all LEDs are off anyways) */
+	else if (val == 0) {
+		_bb_module_unregister_timer();
+		timer_registered = FALSE;
+	}
+	/* renew timer */
 	else {
 		_bb_module_unregister_timer();
-
-		/* turn off all LEDs (if still on) */
-		for (iter = LED0; iter < NUM_LED; iter++) {
-			// if on
-			if (!!gpio_get_value(gpio_data[iter].gpio)) {
-				// turn off LED
-				_turn_off_led(gpio_data[iter].gpio);
-			}
-		}
-
-		blinking = FALSE;
+		_bb_module_register_timer();
 	}
 
 	return (irq_handler_t)IRQ_HANDLED;
