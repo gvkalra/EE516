@@ -277,12 +277,12 @@ _handle_counter_pattern(bool reset)
 		timer_registered = TRUE;
 	}
 	/* value has been reset (remove timer since all LEDs are off anyways) */
-	else if (val == 0) {
+	else if (val == 0 && timer_registered == TRUE) {
 		_bb_module_unregister_timer();
 		timer_registered = FALSE;
 	}
 	/* renew timer */
-	else {
+	else if (timer_registered == TRUE) {
 		_bb_module_unregister_timer();
 		_bb_module_register_timer();
 	}
