@@ -42,7 +42,8 @@
 #define LED_OFF 0
 #define LED_ON 1
 
-#define TIME_STEP  (1 * HZ)
+#define TIME_STEP_ON  (8 * HZ / 10) // 0.8sec
+#define TIME_STEP_OFF  (2 * HZ / 10) // 0.2sec
 
 #define TRUE 1
 #define FALSE 0
@@ -213,7 +214,8 @@ kern_timer_handler(unsigned long arg)
 		_toggle_led(gpio_data[LED3].gpio);
 
 	// renew timer
-	kern_timer.expires = get_jiffies_64() + TIME_STEP;
+	kern_timer.expires = get_jiffies_64() + arg;
+	kern_timer.data = ((arg == TIME_STEP_ON) ? TIME_STEP_OFF : TIME_STEP_ON); //next
 
 	// add to kernel
 	add_timer(&kern_timer);
@@ -227,11 +229,11 @@ _bb_module_register_timer(void)
 	init_timer(&kern_timer);
 
 	//expire at current + TIME_STEP
-	kern_timer.expires = get_jiffies_64() + TIME_STEP;
+	kern_timer.expires = get_jiffies_64() + TIME_STEP_ON;
 
 	// handler
 	kern_timer.function = kern_timer_handler;
-	kern_timer.data = 0;
+	kern_timer.data = TIME_STEP_OFF; //next
 
 	// add to kernel
 	add_timer(&kern_timer);
