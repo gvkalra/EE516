@@ -1,7 +1,7 @@
 #ifndef _LINKED_LIST_H_
 #define _LINKED_LIST_H_
 
-#define LIST_SIZE 10 
+#define LIST_SIZE 10000 
 #define INIT_VAL -1
 
 typedef struct mem_block
